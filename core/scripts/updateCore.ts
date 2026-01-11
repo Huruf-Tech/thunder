@@ -61,7 +61,7 @@ export const updateCore = async (options: {
   const Options = z.object({
     forceSync: z.boolean().optional().default(false),
     template: z.string().optional()
-      .default((await getDenoConfig()).template ?? "master"),
+      .default((await getDenoConfig()).template ?? "main"),
   }).parse(options);
 
   if (

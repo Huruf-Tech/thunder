@@ -1,0 +1,31 @@
+{
+  "create-request": {
+    "scope": "typescript",
+    "description": "Generates a thunder request",
+    "prefix": ["req"],
+    "body": [
+      "${1|get,post,put,patch,delete|}(\"/\", function ${2:create}() {",
+      "\tconst \\$params = z.object({});",
+      "\tconst \\$query = z.object({});",
+      "\tconst \\$body = z.object({});",
+      "\tconst \\$return = z.object({});",
+      "",
+      "\treturn {",
+      "\t\tshape: () => ({",
+      "\t\t\tparams: \\$params,",
+      "\t\t\tquery: \\$query,",
+      "\t\t\tbody: \\$body,",
+      "\t\t\treturn: \\$return,",
+      "\t\t}),",
+      "\t\thandler: async (req: Request) => {",
+      "\t\t\tconst params = \\$params.parse(paramsAsJson(req));",
+      "\t\t\tconst query = \\$query.parse(queryAsJson(req));",
+      "\t\t\tconst body = \\$body.parse(bodyAsJson(req));",
+      "\t\t\t$3\n",
+      "\t\t\treturn Response.json({});",
+      "\t\t}",
+      "\t}",
+      "});"
+    ]
+  }
+}

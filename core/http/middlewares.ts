@@ -57,10 +57,10 @@ export const serveApi = async (req: Request) => {
 
         try {
           if (typeof route.opts === "function") {
-            return route.opts(req);
+            return await route.opts(req);
           }
 
-          return route.opts.handler(req);
+          return await route.opts.handler(req);
         } catch (error) {
           if (error instanceof ZodError) {
             return Response.json({

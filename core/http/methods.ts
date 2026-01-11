@@ -1,8 +1,15 @@
 import { relative } from "@std/path/relative";
+import { ZodObject } from "zod";
 
-export type THandler = (req: Request) => Response;
+export type THandler = (req: Request) => Response | Promise<Response>;
+export type THandlerIOShapes = () => {
+  params: ZodObject;
+  query: ZodObject;
+  body: ZodObject;
+  return: ZodObject;
+};
 export type THandlerOpts = {
-  shape?: unknown;
+  shape?: THandlerIOShapes;
   handler: THandler;
 };
 export type TPreparedHandler = THandlerOpts | THandler;
