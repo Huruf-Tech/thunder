@@ -132,6 +132,7 @@ export const updateCore = async (options: {
               /^(\\|\/)?(docs)(\\|\/)?/,
               /^(\\|\/)?(templates)(\\|\/)?/,
               /^(\\|\/)?(tests)(\\|\/)?/,
+              /^(\\|\/)?(drizzle.schemas.ts)/,
               /^(\\|\/)?(serve.ts)/,
               /^(\\|\/)?(base.d.ts)/,
             ].reduce(
