@@ -1,0 +1,14 @@
+{
+  "nodeModulesDir": "auto",
+  "tasks": {
+    "dev": "ENV_TYPE=development deno serve -A --watch serve.ts",
+    "prod": "ENV_TYPE=production deno serve -A serve.ts"
+  },
+  "imports": {
+    "@/": "./",
+    "@std/dotenv": "jsr:@std/dotenv@^0.225.6",
+    "@std/fs": "jsr:@std/fs@^1.0.21",
+    "@std/http": "jsr:@std/http@^1.0.23",
+    "@std/path": "jsr:@std/path@^1.1.4"
+  }
+}
