@@ -3,3 +3,6 @@ set -e
 
 echo "[pre-commit] Running Deno checks..."
 deno task check
+
+# Re-stage files after formatting
+git add .
