@@ -1,11 +1,17 @@
 {
   "nodeModulesDir": "auto",
   "tasks": {
+    "check": "deno fmt --check && deno lint",
     "dev": "ENV_TYPE=development deno serve -A --watch serve.ts",
-    "prod": "ENV_TYPE=production deno serve -A serve.ts"
+    "start": "ENV_TYPE=production deno serve -A serve.ts",
+    "init": "rm -rf .git && git init && git config core.hooksPath .githooks",
+    "update:core": "deno run -A ./core/scripts/updateCore.ts"
   },
   "imports": {
     "@/": "./",
+    "@cliffy/prompt": "jsr:@cliffy/prompt@^1.0.0-rc.8",
+    "@std/cli": "jsr:@std/cli@^1.0.25",
+    "@std/collections": "jsr:@std/collections@^1.1.3",
     "@std/dotenv": "jsr:@std/dotenv@^0.225.6",
     "@std/fs": "jsr:@std/fs@^1.0.21",
     "@std/http": "jsr:@std/http@^1.0.23",
