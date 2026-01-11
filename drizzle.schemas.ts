@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 
 const pluginDir = "./plugins/";
 const pluginNamespaces = readdirSync(pluginDir);
@@ -17,7 +17,7 @@ for (const namespace of pluginNamespaces) {
       "db",
     );
 
-    if (existsSync(schemaPath)) {
+    if (existsSync(schemaPath) && statSync(schemaPath).isDirectory()) {
       schemas.push(schemaPath.replaceAll("\\", "/"));
     }
   }
