@@ -1,3 +1,3 @@
-export const paramsAsJson = (req: Request) => ({});
-export const queryAsJson = (req: Request) => ({});
-export const bodyAsJson = (req: Request) => ({});
+export const paramsAsJson = (_req: Request) => ({});
+export const queryAsJson = (_req: Request) => ({});
+export const bodyAsJson = (_req: Request) => ({});
