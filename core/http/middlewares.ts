@@ -1,5 +1,5 @@
 import { routes } from "./methods.ts";
-import { pathToRegexp } from "path-to-regexp";
+import { match, pathToRegexp } from "path-to-regexp";
 import { z, ZodError } from "zod";
 import { existsSync } from "@std/fs";
 import { join } from "@std/path/join";
@@ -19,9 +19,8 @@ export const serveApi = async (req: Request) => {
         .split("/")
         .filter(Boolean);
 
-      namespace = "";
-      router = _router ?? "";
-      endpoint = _endpoint.join("/") || "/";
+      router = _router;
+      endpoint = `/${_endpoint.join("/")}/` || "/";
 
       await import(`../../api/${router}.ts`);
     } else if (/\/api\/.*/.test(url.pathname)) {
@@ -32,23 +31,29 @@ export const serveApi = async (req: Request) => {
 
       namespace = [_namespace, _plugin].join("/");
       router = _router ?? "";
-      endpoint = _endpoint.join("/") || "/";
+      endpoint = `/${_endpoint.join("/")}/` || "/";
 
       await import(`../../plugins/${namespace}/api/${router}.ts`);
     }
 
     if (
-      typeof namespace === "string" &&
       typeof router === "string" &&
       typeof endpoint === "string"
     ) {
       for (
-        const route
-          of routes[[namespace, router].join("/")][req.method.toLowerCase()]
+        const route of routes[[namespace, router].filter(Boolean).join("/")][
+          req.method.toLowerCase()
+        ]
       ) {
         const regexp = pathToRegexp(route.path).regexp;
 
         if (!regexp.test(endpoint)) continue;
+
+        const parser = match(route.path);
+
+        // deno-lint-ignore ban-ts-comment
+        // @ts-ignore
+        req._params = parser(endpoint).params;
 
         try {
           if (typeof route.opts === "function") {
