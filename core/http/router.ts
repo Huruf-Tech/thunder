@@ -217,7 +217,7 @@ export const matchRoute = async (
     if (router instanceof Router) {
       const exec = router.match(
         req.method.toLowerCase() as TMethod,
-        pathnameParts.join("/") || "/",
+        `/${pathnameParts.join("/") ?? ""}`,
       );
 
       if (!exec) return;
