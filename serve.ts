@@ -1,12 +1,7 @@
-import { serveAssets } from "@/core/middlewares/serveAssets.ts";
-import { matchRoute } from "@/core/http/router.ts";
+import server from "./serve.base.ts";
 
 export default {
-  async fetch(req) {
-    const exec = await matchRoute("api", req).catch(console.error);
-
-    if (typeof exec === "function") return exec(req);
-
-    return serveAssets(req);
+  fetch(req) {
+    return server(req);
   },
 } satisfies Deno.ServeDefaultExport;

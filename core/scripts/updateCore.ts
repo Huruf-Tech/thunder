@@ -130,11 +130,8 @@ export const updateCore = async (options: {
             existsSync(TargetPath) && [
               /^(\\|\/)?(core)(\\|\/)?/,
               /^(\\|\/)?(docs)(\\|\/)?/,
-              /^(\\|\/)?(templates)(\\|\/)?/,
               /^(\\|\/)?(tests)(\\|\/)?/,
-              /^(\\|\/)?(drizzle.schemas.ts)/,
-              /^(\\|\/)?(serve.ts)/,
-              /^(\\|\/)?(base.d.ts)/,
+              /^(\\|\/)?(serve.base.ts)/,
             ].reduce(
               (continues, expect) =>
                 continues &&
@@ -163,7 +160,7 @@ export const updateCore = async (options: {
     // Update Docs File
     await Deno.copyFile(
       join(TempPath, "README.md"),
-      join(Deno.cwd(), "new.README.md"),
+      join(Deno.cwd(), "thunder.README.md"),
     );
 
     await mergeDenoConfig(TempPath);
