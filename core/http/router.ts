@@ -229,7 +229,21 @@ export const matchRoute = async (
           ...(await loadHooks(join(hooksPath, "./**/*.ts"))),
         );
 
-        Logger.success(req.method.toUpperCase(), req.url, res.status);
+        const log = (() => {
+          switch (true) {
+            case res.status < 299:
+              return Logger.success;
+            case res.status < 399:
+              return Logger.info;
+            case res.status < 499:
+              return Logger.warn;
+
+            default:
+              return Logger.error;
+          }
+        })();
+
+        log(req.method.toUpperCase(), req.url, res.status);
 
         return res;
       };
