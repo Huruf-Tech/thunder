@@ -1,6 +1,7 @@
 import { expandGlob } from "@std/fs";
 
 export type THook = {
+  priority?: number;
   pre?: (scope: string, name: string, req: Request) => void | Promise<void>;
   post?: (
     scope: string,
@@ -34,6 +35,8 @@ export const loadHooks = async (path: string) => {
       ) hooks.push(mod.default);
     }
   }
+
+  hooks.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
 
   return hooks;
 };
