@@ -1,6 +1,6 @@
 import { join } from "@std/path/join";
 import z, { ZodError, ZodObject } from "zod";
-import { match, pathToRegexp } from "path-to-regexp";
+import { match, MatchFunction, pathToRegexp } from "path-to-regexp";
 import { basename } from "@std/path/basename";
 import { loadHooks, THook } from "./hooks.ts";
 import { Logger } from "../common/logger.ts";
@@ -31,6 +31,7 @@ export class Router {
     [K in TMethod]?: Map<RegExp, {
       path: string;
       prepare: TPrepareHandler;
+      parser: MatchFunction<Record<string, string>>;
     }>;
   } = {};
 
@@ -44,6 +45,7 @@ export class Router {
     routes.set(pathToRegexp(path).regexp, {
       path,
       prepare,
+      parser: match<Record<string, string>>(path),
     });
 
     return this;
@@ -94,9 +96,8 @@ export class Router {
 
     for (const routes of [mainRoutes, otherRoutes]) {
       if (routes) {
-        for (const [regex, { path, prepare }] of routes) {
+        for (const [regex, { prepare, parser }] of routes) {
           if (regex.test(endpoint)) {
-            const parser = match(path);
             const handlerOpts = prepare();
 
             return async (req: Request, ...hooks: THook[]) => {
@@ -158,6 +159,69 @@ export class Router {
   }
 }
 
+// Cache for resolved route import paths
+const routePathCache = new Map<string, string | null>();
+
+// Resolve and cache the import path for a given URL pathname
+const resolveRoutePath = async (
+  pathname: string,
+  apiPath: string,
+  apiBasename: string,
+): Promise<{ importPath: string; remainingParts: string[] } | null> => {
+  // Check cache first
+  const cacheKey = pathname;
+  const cached = routePathCache.get(cacheKey);
+  if (cached !== undefined) {
+    if (cached === null) return null;
+    // Parse cached value back
+    const [importPath, ...remainingParts] = cached.split("|");
+    return { importPath, remainingParts: remainingParts.filter(Boolean) };
+  }
+
+  const pathnameParts = pathname
+    .replace(`/${apiBasename}/`, "")
+    .split("/")
+    .filter(Boolean);
+
+  const importPathParts = ["api"];
+
+  while (pathnameParts.length) {
+    if (importPathParts.length > 5) {
+      routePathCache.set(cacheKey, null);
+      return null;
+    }
+
+    const part = pathnameParts.shift()!;
+
+    const settlements = await Promise.allSettled([
+      Deno.stat(join(Deno.cwd(), ...importPathParts, part)),
+      Deno.stat(join(Deno.cwd(), ...importPathParts, part + ".ts")),
+    ]);
+
+    const settled = settlements.find((_) => _.status === "fulfilled");
+
+    if (!settled) {
+      routePathCache.set(cacheKey, null);
+      return null;
+    }
+
+    importPathParts.push(part);
+
+    if (settled.value.isFile) {
+      break;
+    }
+  }
+
+  const importPath = importPathParts.length === 1
+    ? `${apiPath}/index`
+    : importPathParts.join("/");
+
+  // Cache the result: importPath|remaining|parts
+  routePathCache.set(cacheKey, [importPath, ...pathnameParts].join("|"));
+
+  return { importPath, remainingParts: pathnameParts };
+};
+
 export const matchRoute = async (
   req: Request,
   opts?: {
@@ -173,52 +237,20 @@ export const matchRoute = async (
   const apiBasename = basename(apiPath);
 
   if (new RegExp(`\\/${apiBasename}\\/.*`).test(url.pathname)) {
-    const pathnameParts = url.pathname
-      .replace(`/${apiBasename}/`, "")
-      .split("/")
-      .filter(Boolean);
+    const resolved = await resolveRoutePath(url.pathname, apiPath, apiBasename);
 
-    const importPathParts = ["api"];
+    if (!resolved) throw new Error("Invalid path");
 
-    while (pathnameParts.length) {
-      if (importPathParts.length > 5) throw new Error("Too long path");
+    const { importPath, remainingParts } = resolved;
 
-      const part = pathnameParts.shift()!;
-
-      const settlements = await Promise.allSettled([
-        Deno.stat(
-          join(Deno.cwd(), ...importPathParts, part),
-        ),
-        Deno.stat(
-          join(Deno.cwd(), ...importPathParts, part + ".ts"),
-        ),
-      ]);
-
-      const settled = settlements.find((_) => _.status === "fulfilled");
-
-      if (!settled) throw new Error("Invalid path");
-
-      importPathParts.push(part);
-
-      if (settled.value.isFile) {
-        break;
-      }
-    }
-
-    const importPath = importPathParts.length === 1
-      ? `${apiPath}/index`
-      : importPathParts.join("/");
-
-    const mod = await import(
-      `../../${importPath}.ts`
-    );
+    const mod = await import(`../../${importPath}.ts`);
 
     const router = mod.default;
 
     if (router instanceof Router) {
       const exec = router.match(
         req.method.toLowerCase() as TMethod,
-        `/${pathnameParts.join("/") ?? ""}`,
+        `/${remainingParts.join("/") ?? ""}`,
       );
 
       if (!exec) return;

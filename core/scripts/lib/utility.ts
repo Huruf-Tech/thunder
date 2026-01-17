@@ -7,13 +7,14 @@ import { dirname, resolve } from "@std/path";
 export const printStream = async (stream: ReadableStream<Uint8Array>) => {
   const Output: string[] = [];
   const Reader = stream.getReader();
+  const decoder = new TextDecoder();
 
   while (true) {
     const { value, done } = await Reader.read();
 
     if (done) break;
 
-    Output.push(new TextDecoder().decode(value));
+    Output.push(decoder.decode(value, { stream: true }));
 
     Deno.stdout.write(value);
   }

@@ -18,7 +18,7 @@ export type THook = {
 let hooks: THook[] | undefined;
 
 export const loadHooks = async (path: string) => {
-  if (hooks?.length) return hooks;
+  if (hooks !== undefined) return hooks;
 
   hooks = [];
 

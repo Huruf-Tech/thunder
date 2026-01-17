@@ -2,6 +2,9 @@ import { exists } from "@std/fs";
 import { join } from "@std/path/join";
 import { serveFile } from "@std/http/file-server";
 
+// Cache for index file names per root directory
+const indexFileCache = new Map<string, string>();
+
 export const serveAssets = async (req: Request) => {
   const url = new URL(req.url);
 
@@ -11,17 +14,23 @@ export const serveAssets = async (req: Request) => {
 
   if (!await exists(root)) return new Response("Not found", { status: 404 });
 
-  let IndexFile = "index.html";
+  let IndexFile = indexFileCache.get(root);
 
-  if (!await exists(join(root, IndexFile))) {
-    const WWWItems = Deno.readDirSync(root);
+  if (!IndexFile) {
+    IndexFile = "index.html";
 
-    for (const item of WWWItems) {
-      if (!item.isDirectory && /^index.*/.test(item.name)) {
-        IndexFile = item.name;
-        break;
+    if (!await exists(join(root, IndexFile))) {
+      const WWWItems = Deno.readDirSync(root);
+
+      for (const item of WWWItems) {
+        if (!item.isDirectory && /^index.*/.test(item.name)) {
+          IndexFile = item.name;
+          break;
+        }
       }
     }
+
+    indexFileCache.set(root, IndexFile);
   }
 
   return await serveFile(req, join(root, ...subPath)).then(async (res) => {
