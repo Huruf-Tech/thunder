@@ -3,6 +3,3 @@ set -e
 
 echo "[pre-commit] Running Deno checks..."
 npx -y lint-staged
-
-# Re-stage files after formatting
-git add .
