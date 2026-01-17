@@ -3,6 +3,7 @@ import z, { ZodError, ZodObject } from "zod";
 import { match, pathToRegexp } from "path-to-regexp";
 import { basename } from "@std/path/basename";
 import { loadHooks, THook } from "./hooks.ts";
+import { Logger } from "../common/logger.ts";
 
 export type TResponse = Response | Promise<Response>;
 export type THandler = (req: Request) => TResponse;
@@ -223,10 +224,14 @@ export const matchRoute = async (
       if (!exec) return;
 
       return async (req: Request) => {
-        return exec(
+        const res = await exec(
           req,
           ...(await loadHooks(join(hooksPath, "./**/*.ts"))),
         );
+
+        Logger.success(req.method.toUpperCase(), req.url, res.status);
+
+        return res;
       };
     }
 
