@@ -102,7 +102,13 @@ export class Router {
               try {
                 for (const hook of hooks) {
                   if (typeof hook.pre === "function") {
-                    await hook.pre(this.name, prepare.name, req);
+                    const hookRes = await hook.pre(
+                      this.name,
+                      prepare.name,
+                      req,
+                    );
+
+                    if (hookRes instanceof Response) return hookRes;
                   }
                 }
 
@@ -120,7 +126,14 @@ export class Router {
 
                 for (const hook of hooks) {
                   if (typeof hook.post === "function") {
-                    await hook.post(this.name, prepare.name, req, res);
+                    const hookRes = await hook.post(
+                      this.name,
+                      prepare.name,
+                      req,
+                      res,
+                    );
+
+                    if (hookRes instanceof Response) return hookRes;
                   }
                 }
 

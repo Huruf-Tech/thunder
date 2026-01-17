@@ -2,13 +2,17 @@ import { expandGlob } from "@std/fs";
 
 export type THook = {
   priority?: number;
-  pre?: (scope: string, name: string, req: Request) => void | Promise<void>;
+  pre?: (
+    scope: string,
+    name: string,
+    req: Request,
+  ) => Response | void | Promise<Response | void>;
   post?: (
     scope: string,
     name: string,
     req: Request,
     res: Response,
-  ) => void | Promise<void>;
+  ) => Response | void | Promise<Response | void>;
 };
 
 let hooks: THook[] | undefined;
