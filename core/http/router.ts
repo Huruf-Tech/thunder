@@ -243,7 +243,7 @@ export const matchRoute = async (
           }
         })();
 
-        log(req.method.toUpperCase(), req.url, res.status);
+        log.bind(Logger)(req.method.toUpperCase(), req.url, res.status);
 
         return res;
       };
