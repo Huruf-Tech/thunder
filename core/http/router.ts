@@ -1,6 +1,8 @@
 import { join } from "@std/path/join";
 import z, { ZodError, ZodObject } from "zod";
 import { match, pathToRegexp } from "path-to-regexp";
+import { basename } from "@std/path/basename";
+import { loadHooks, THook } from "./hooks.ts";
 
 export type TResponse = Response | Promise<Response>;
 export type THandler = (req: Request) => TResponse;
@@ -96,17 +98,33 @@ export class Router {
             const parser = match(path);
             const handlerOpts = prepare();
 
-            return async (req: Request) => {
-              // deno-lint-ignore ban-ts-comment
-              // @ts-ignore
-              req._params = parser(endpoint).params;
-
+            return async (req: Request, ...hooks: THook[]) => {
               try {
-                if (typeof handlerOpts === "function") {
-                  return await handlerOpts(req);
+                for (const hook of hooks) {
+                  if (typeof hook.pre === "function") {
+                    await hook.pre(this.name, prepare.name, req);
+                  }
                 }
 
-                return await handlerOpts.handler(req);
+                // deno-lint-ignore ban-ts-comment
+                // @ts-ignore
+                req._params = parser(endpoint).params;
+
+                let res: Response;
+
+                if (typeof handlerOpts === "function") {
+                  res = await handlerOpts(req);
+                } else {
+                  res = await handlerOpts.handler(req);
+                }
+
+                for (const hook of hooks) {
+                  if (typeof hook.post === "function") {
+                    await hook.post(this.name, prepare.name, req, res);
+                  }
+                }
+
+                return res;
               } catch (error) {
                 if (error instanceof ZodError) {
                   return Response.json({
@@ -127,14 +145,22 @@ export class Router {
 }
 
 export const matchRoute = async (
-  root: string,
   req: Request,
+  opts?: {
+    api?: string;
+    hooks?: string;
+  },
 ): Promise<TRouteExecutor | undefined> => {
   const url = new URL(req.url);
 
-  if (new RegExp(`\\/${root}\\/.*`).test(url.pathname)) {
+  const apiPath = opts?.api ?? "api";
+  const hooksPath = opts?.hooks ?? "hooks";
+
+  const apiBasename = basename(apiPath);
+
+  if (new RegExp(`\\/${apiBasename}\\/.*`).test(url.pathname)) {
     const pathnameParts = url.pathname
-      .replace(`/${root}/`, "")
+      .replace(`/${apiBasename}/`, "")
       .split("/")
       .filter(Boolean);
 
@@ -166,7 +192,7 @@ export const matchRoute = async (
     }
 
     const importPath = importPathParts.length === 1
-      ? "api/index"
+      ? `${apiPath}/index`
       : importPathParts.join("/");
 
     const mod = await import(
@@ -176,10 +202,19 @@ export const matchRoute = async (
     const router = mod.default;
 
     if (router instanceof Router) {
-      return router.match(
+      const exec = router.match(
         req.method.toLowerCase() as TMethod,
         pathnameParts.join("/") || "/",
       );
+
+      if (!exec) return;
+
+      return async (req: Request) => {
+        return exec(
+          req,
+          ...(await loadHooks(join(hooksPath, "./**/*.ts"))),
+        );
+      };
     }
 
     throw new Error("Not a valid router");
