@@ -28,7 +28,7 @@ export class Logger {
     const timestamp = new Date().toISOString();
 
     return nativeLogFunction(
-      `${color}[${type}] ${timestamp}:`,
+      `${color}${timestamp} ${type.toUpperCase()}:`,
       ...args,
       RESET,
     );
