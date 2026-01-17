@@ -2,7 +2,7 @@
 set -e
 
 echo "[pre-commit] Running Deno checks..."
-deno task check
+npx -y lint-staged
 
 # Re-stage files after formatting
 git add .
