@@ -82,40 +82,45 @@ export class Router {
   }
 
   public match(method: TMethod, endpoint: string) {
-    const routes = this.routesTree[method];
+    const mainRoutes = this.routesTree[method];
+    const otherRoutes = this.routesTree["all"];
 
-    if (!routes) {
+    if (!mainRoutes && !otherRoutes) {
       return (_req: Request) => new Response("Not found", { status: 404 });
     }
 
-    for (const [regex, { path, prepare }] of routes) {
-      if (regex.test(endpoint)) {
-        const parser = match(path);
-        const handlerOpts = prepare();
+    for (const routes of [mainRoutes, otherRoutes]) {
+      if (routes) {
+        for (const [regex, { path, prepare }] of routes) {
+          if (regex.test(endpoint)) {
+            const parser = match(path);
+            const handlerOpts = prepare();
 
-        return async (req: Request) => {
-          // deno-lint-ignore ban-ts-comment
-          // @ts-ignore
-          req._params = parser(endpoint).params;
+            return async (req: Request) => {
+              // deno-lint-ignore ban-ts-comment
+              // @ts-ignore
+              req._params = parser(endpoint).params;
 
-          try {
-            if (typeof handlerOpts === "function") {
-              return await handlerOpts(req);
-            }
+              try {
+                if (typeof handlerOpts === "function") {
+                  return await handlerOpts(req);
+                }
 
-            return await handlerOpts.handler(req);
-          } catch (error) {
-            if (error instanceof ZodError) {
-              return Response.json({
-                error: z.prettifyError(error),
-              }, { status: 400 });
-            }
+                return await handlerOpts.handler(req);
+              } catch (error) {
+                if (error instanceof ZodError) {
+                  return Response.json({
+                    error: z.prettifyError(error),
+                  }, { status: 400 });
+                }
 
-            return Response.json({
-              error,
-            }, { status: 500 });
+                return Response.json({
+                  error,
+                }, { status: 500 });
+              }
+            };
           }
-        };
+        }
       }
     }
   }
