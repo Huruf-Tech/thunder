@@ -7,15 +7,31 @@ export enum LogType {
   SUCCESS = "success",
 }
 
+const COLORS: Record<LogType, string> = {
+  [LogType.INFO]: "\x1b[34m", // Blue
+  [LogType.WARN]: "\x1b[33m", // Yellow
+  [LogType.ERROR]: "\x1b[31m", // Red
+  [LogType.SUCCESS]: "\x1b[32m", // Green
+};
+
+const RESET = "\x1b[0m";
+
 export class Logger {
   protected static log(
     type: LogType,
     nativeLogFunction: (...args: unknown[]) => void,
     ...args: unknown[]
   ) {
-    if (!Env.is(EnvType.PRODUCTION)) {
-      return nativeLogFunction(`[${type}] ${new Date()}:`, ...args);
-    }
+    if (Env.is(EnvType.PRODUCTION)) return;
+
+    const color = COLORS[type];
+    const timestamp = new Date().toISOString();
+
+    return nativeLogFunction(
+      `${color}[${type}] ${timestamp}:`,
+      ...args,
+      RESET,
+    );
   }
 
   static info(...args: unknown[]) {
