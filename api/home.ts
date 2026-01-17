@@ -1,6 +1,8 @@
-import { get } from "@/core/http/methods.ts";
+import { Router } from "@/core/http/router.ts";
 
-get("/", function home() {
+const router = new Router("home");
+
+router.get("/", function status() {
   return () => {
     return Response.json({
       success: true,
@@ -8,3 +10,5 @@ get("/", function home() {
     });
   };
 });
+
+export default router;

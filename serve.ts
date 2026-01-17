@@ -1,20 +1,12 @@
-import { serveApi, serveAssets } from "@/core/http/middlewares.ts";
+import { serveAssets } from "@/core/middlewares/serveAssets.ts";
+import { matchRoute } from "@/core/http/router.ts";
 
 export default {
   async fetch(req) {
-    const middlewares = [
-      serveApi,
-      serveAssets,
-    ];
+    const exec = await matchRoute("api", req).catch(console.error);
 
-    for (const middleware of middlewares) {
-      const res = await middleware(req);
+    if (typeof exec === "function") return exec(req);
 
-      if (res instanceof Response) {
-        return res;
-      }
-    }
-
-    return new Response("Not Found", { status: 404 });
+    return serveAssets(req);
   },
 } satisfies Deno.ServeDefaultExport;

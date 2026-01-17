@@ -1,6 +1,8 @@
 // deno-lint-ignore-file no-explicit-any
 import { Readable } from "node:stream";
 import { Buffer } from "node:buffer";
+import { ensureDir } from "@std/fs/ensure-dir";
+import { dirname, resolve } from "@std/path";
 
 export const printStream = async (stream: ReadableStream<Uint8Array>) => {
   const Output: string[] = [];
@@ -59,3 +61,26 @@ export const writeJSONFile = (path: string, data: any) =>
       2,
     ),
   );
+
+export const symlink = async (target: string, linkPath: string) => {
+  // Make both paths absolute and correct for the current repo
+  const absTarget = resolve(target);
+  const absLink = resolve(linkPath);
+
+  // Ensure destination parent exists
+  await ensureDir(dirname(absLink));
+
+  // Remove existing destination if present
+  try {
+    await Deno.remove(absLink, { recursive: true });
+  } catch {
+    // ignore if it doesn't exist
+  }
+
+  // Create link (junction on Windows is most reliable)
+  if (Deno.build.os === "windows") {
+    await Deno.symlink(absTarget, absLink, { type: "junction" });
+  } else {
+    await Deno.symlink(absTarget, absLink, { type: "dir" });
+  }
+};

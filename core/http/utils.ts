@@ -1,5 +1,4 @@
-// @deno-types=npm:@types/qs
-import qs from "qs";
+import { parseQueryParams } from "../common/parseQueryParams.ts";
 
 export const paramsAsJson = <T extends Record<string, string>>(
   req: Request,
@@ -11,7 +10,7 @@ export const paramsAsJson = <T extends Record<string, string>>(
 export const queryAsJson = (req: Request, opts?: qs.IParseOptions) => {
   const url = new URL(req.url);
 
-  return qs.parse(url.search, { ignoreQueryPrefix: true, ...opts });
+  return parseQueryParams(url.search, opts);
 };
 
 export const bodyAsJson = (req: Request) => req.json();
