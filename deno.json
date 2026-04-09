@@ -7,7 +7,7 @@
   },
   "tasks": {
     "check": "deno fmt && deno lint",
-    "dev": "ENV_TYPE=development deno serve -A --watch serve.ts",
+    "dev": "ENV_TYPE=development deno serve -A --watch --port=8000 serve.ts",
     "start": "ENV_TYPE=production deno serve -A serve.ts",
     "init": "rm -rf .git && git init && git config core.hooksPath .githooks",
     "update:core": "deno run -A ./core/scripts/updateCore.ts",
