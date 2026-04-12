@@ -63,6 +63,11 @@ export const writeTextFile = async (
   await Deno.writeTextFile(path, data, options);
 };
 
+export const readJSONFile = async <T = unknown>(
+  path: string | URL,
+  options?: Deno.ReadFileOptions,
+) => JSON.parse(await Deno.readTextFile(path, options)) as T;
+
 export const writeJSONFile = (
   path: string,
   data: any,

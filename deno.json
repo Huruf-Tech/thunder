@@ -16,7 +16,8 @@
     "remove:plugin": "deno run -A ./core/scripts/removePlugin.ts",
     "generate:openapi": "deno run -A ./core/scripts/generateOpenAPI.ts",
     "generate:sdk": "deno run -A ./core/scripts/generateSDK.ts",
-    "generate:sdk:plugin": "deno run -A ./core/scripts/generateSDKPlugin.ts"
+    "generate:sdk:plugin": "deno run -A ./core/scripts/generateSDKPlugin.ts",
+    "generate:app": "deno run -A ./core/scripts/generateApp.ts"
   },
   "imports": {
     "@/": "./",
