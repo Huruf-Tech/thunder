@@ -7,7 +7,7 @@
   },
   "tasks": {
     "check": "deno fmt && deno lint",
-    "dev": "ENV_TYPE=development deno serve -A --watch serve.ts",
+    "dev": "ENV_TYPE=development deno serve -A --watch --port=8000 serve.ts",
     "start": "ENV_TYPE=production deno serve -A serve.ts",
     "init": "rm -rf .git && git init && git config core.hooksPath .githooks && deno run -A ./core/scripts/setupEnv.ts",
     "update:core": "deno run -A ./core/scripts/updateCore.ts",
@@ -16,7 +16,8 @@
     "remove:plugin": "deno run -A ./core/scripts/removePlugin.ts",
     "generate:openapi": "deno run -A ./core/scripts/generateOpenAPI.ts",
     "generate:sdk": "deno run -A ./core/scripts/generateSDK.ts",
-    "generate:sdk:plugin": "deno run -A ./core/scripts/generateSDKPlugin.ts"
+    "generate:sdk:plugin": "deno run -A ./core/scripts/generateSDKPlugin.ts",
+    "generate:app": "deno run -A ./core/scripts/generateApp.ts"
   },
   "imports": {
     "@/": "./",

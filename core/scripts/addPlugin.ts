@@ -85,7 +85,7 @@ export const linkPlugin = async (name: string, opts?: { cwd?: string }) => {
   await Deno.mkdir(targetPath, { recursive: true });
 
   const globPatterns = [
-    "{routes,schemas,hooks,lib,public,sdk-plugins}/**/*",
+    "{routes,schemas,hooks,lib,public,sdk-plugins,utils,scripts,assets,common,shared,others}/**/*",
   ];
 
   for (const pattern of globPatterns) {

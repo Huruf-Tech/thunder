@@ -147,6 +147,8 @@ export const generateModules = async (
     const entry of expandGlob("./**/*.ts", {
       root: join(opts?.cwd, routesDir),
       globstar: true,
+      followSymlinks: true,
+      canonicalize: true,
     })
   ) {
     if (modules[entry.name]) {
@@ -253,6 +255,8 @@ export const syncPluginContent = async (opts: {
       {
         root: opts.pluginDir,
         globstar: true,
+        followSymlinks: true,
+        canonicalize: true,
       },
     )
   ) {
@@ -265,6 +269,8 @@ export const syncPluginContent = async (opts: {
       const subEntry of expandGlob("**/**/*", {
         root: pluginDir,
         globstar: true,
+        followSymlinks: true,
+        canonicalize: true,
       })
     ) {
       if (

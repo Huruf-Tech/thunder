@@ -56,6 +56,16 @@ const resolveJSONSchemaType = (ctx: {
   }
 };
 
+export const $objectId = z.preprocess((val) => {
+  if (val instanceof ObjectId) return val;
+
+  if (typeof val === "string" && ObjectId.isValid(val)) {
+    return new ObjectId(val);
+  }
+
+  return val;
+}, z.instanceof(ObjectId)).meta({ tsType: "string" });
+
 export const createCRUD = <T extends z.ZodObject>(
   details: TCrudDetails<T>,
   opts?: TCrudOptions<T>,
