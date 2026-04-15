@@ -184,7 +184,7 @@ export const addPlugin = async (options: {
       name: Options.name,
       envs: Options.setup instanceof Array
         ? Options.setup
-        : Object.values(EnvType),
+        : [EnvType.PRODUCTION],
       prompt: options.prompt,
     });
   }
@@ -199,7 +199,7 @@ if (import.meta.main) {
 
   await addPlugin({
     name: name ?? n,
-    setup: resolvedSetup?.split(",").map((env: string) => env.trim()),
+    setup: resolvedSetup,
     prompt: true,
   });
 

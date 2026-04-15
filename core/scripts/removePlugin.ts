@@ -61,7 +61,7 @@ export const removePlugin = async (options: {
       name: Options.name,
       envs: Options.clean instanceof Array
         ? Options.clean
-        : Object.values(EnvType),
+        : [EnvType.PRODUCTION],
       clean: true,
       prompt: options.prompt,
     });

@@ -32,7 +32,7 @@ export const setupPlugin = async (options: {
       Options.envs = await Checkbox.prompt({
         message: "Select envs",
         options: Object.values(EnvType),
-        default: Object.values(EnvType),
+        default: [EnvType.PRODUCTION],
       }) as Array<EnvType>;
     }
   }
