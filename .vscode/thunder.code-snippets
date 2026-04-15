@@ -88,7 +88,7 @@
     "body": [
       "import z from \"zod\";",
       "import { mongodb } from \"@/database.ts\";",
-      "import { $objectId } from \"@/core/utils/createCRUD.ts\";",
+      "import { \\$objectId } from \"@/core/utils/createCRUD.ts\";",
       "",
       "export const $1InputSchema = z.object({",
       "\t// Add your input fields here",

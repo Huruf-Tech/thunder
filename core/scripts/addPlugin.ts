@@ -8,6 +8,8 @@ import { Input } from "@cliffy/prompt/input";
 import { sh } from "./lib/sh.ts";
 import { symlink, writeJSONFile } from "./lib/utility.ts";
 import { denoConfigPath, readDenoConfig } from "../utils/denoConfig.ts";
+import { EnvType } from "../utils/env.ts";
+import { setupPlugin } from "./setupPlugin.ts";
 
 export const resolvePluginName = (name: string) =>
   name
@@ -134,10 +136,12 @@ export const linkPlugin = async (name: string, opts?: { cwd?: string }) => {
 
 export const addPlugin = async (options: {
   name: string;
+  setup?: boolean | EnvType[];
   prompt?: boolean;
 }) => {
   const Options = z.object({
     name: z.optional(z.string()),
+    setup: z.optional(z.union([z.boolean(), z.array(z.enum(EnvType))])),
   }).parse(options);
 
   if (options.prompt && !Options.name) {
@@ -174,13 +178,24 @@ export const addPlugin = async (options: {
   }
 
   await linkPlugin(resolvedPluginName);
+
+  if (Options.setup) {
+    await setupPlugin({
+      name: Options.name,
+      envs: Options.setup instanceof Array
+        ? Options.setup
+        : Object.values(EnvType),
+      prompt: options.prompt,
+    });
+  }
 };
 
 if (import.meta.main) {
-  const { name, n } = parse(Deno.args);
+  const { name, n, setup } = parse(Deno.args);
 
   await addPlugin({
     name: name ?? n,
+    setup,
     prompt: true,
   });
 

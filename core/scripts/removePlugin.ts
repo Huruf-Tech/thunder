@@ -5,7 +5,9 @@ import { Input } from "@cliffy/prompt/input";
 
 import { writeJSONFile } from "./lib/utility.ts";
 import { denoConfigPath, readDenoConfig } from "../utils/denoConfig.ts";
+import { EnvType } from "../utils/env.ts";
 import { resolvePluginName } from "./addPlugin.ts";
+import { setupPlugin } from "./setupPlugin.ts";
 
 export const removePluginFromImportMap = async (
   name: string,
@@ -34,10 +36,12 @@ export const unlinkPlugin = async (name: string, opts?: { cwd?: string }) => {
 
 export const removePlugin = async (options: {
   name: string;
+  clean?: boolean | EnvType[];
   prompt?: boolean;
 }) => {
   const Options = await z.object({
     name: z.optional(z.string()),
+    clean: z.optional(z.union([z.boolean(), z.array(z.enum(EnvType))])),
   }).parse(options);
 
   if (options.prompt && !Options.name) {
@@ -51,6 +55,17 @@ export const removePlugin = async (options: {
   const resolvedPluginName = resolvePluginName(Options.name);
 
   await unlinkPlugin(resolvedPluginName);
+
+  if (Options.clean) {
+    await setupPlugin({
+      name: Options.name,
+      envs: Options.clean instanceof Array
+        ? Options.clean
+        : Object.values(EnvType),
+      clean: true,
+      prompt: options.prompt,
+    });
+  }
 };
 
 if (import.meta.main) {

@@ -1,8 +1,9 @@
-type ShOptions = {
-  cwd?: string;
-  /** How many trailing lines to show live (dim). Default: 4, set 0 to disable. */
-  tail?: number;
-};
+type ShOptions =
+  & {
+    /** How many trailing lines to show live (dim). Default: 4, set 0 to disable. */
+    tail?: number;
+  }
+  & Omit<Deno.CommandOptions, "args">;
 
 export const sh = async (
   cmd: string[],
@@ -16,9 +17,9 @@ export const sh = async (
 
   const proc = new Deno.Command(cmd[0], {
     args: cmd.slice(1),
-    cwd: opts.cwd,
     stdout: "piped",
     stderr: "piped",
+    ...opts,
   }).spawn();
 
   const decoder = new TextDecoder();
