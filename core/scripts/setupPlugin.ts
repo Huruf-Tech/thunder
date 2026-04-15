@@ -57,17 +57,26 @@ export const setupPlugin = async (options: {
   }
 
   for (const env of Options.envs) {
+    const controller = new AbortController();
+
+    const timeout = setTimeout(() => {
+      controller.abort();
+    }, 30000);
+
     await sh([
       "deno",
       "run",
-      targetScriptPath,
       ...(Options.denoParams ?? ["-A"]),
+      targetScriptPath,
     ], {
+      signal: controller.signal,
       cwd: Deno.cwd(),
       env: {
         ENV_TYPE: env,
       },
     });
+
+    clearTimeout(timeout);
   }
 };
 
