@@ -69,10 +69,15 @@ export const removePlugin = async (options: {
 };
 
 if (import.meta.main) {
-  const { name, n } = parse(Deno.args);
+  const { name, n, clean } = parse(Deno.args);
+
+  const resolvedClean = clean instanceof Array
+    ? clean
+    : clean?.split(",").map((env: string) => env.trim());
 
   await removePlugin({
     name: name ?? n,
+    clean: resolvedClean,
     prompt: true,
   });
 

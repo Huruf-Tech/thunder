@@ -12,6 +12,7 @@
     "init": "rm -rf .git && git init && git config core.hooksPath .githooks && deno run -A ./core/scripts/setupEnv.ts",
     "update:core": "deno run -A ./core/scripts/updateCore.ts",
     "add:plugin": "deno run -A ./core/scripts/addPlugin.ts",
+    "setup:plugin": "deno run -A ./core/scripts/setupPlugin.ts",
     "update:plugin": "deno run -A ./core/scripts/updatePlugin.ts",
     "remove:plugin": "deno run -A ./core/scripts/removePlugin.ts",
     "generate:openapi": "deno run -A ./core/scripts/generateOpenAPI.ts",
