@@ -30,7 +30,7 @@ export class BaseSDK {
     };
 
     static log(...args: unknown[]) {
-        if(this._options.logs) {
+        if(this._options?.logs) {
             console.log(...args);
         }
     }
