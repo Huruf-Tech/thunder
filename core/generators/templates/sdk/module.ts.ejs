@@ -35,10 +35,10 @@ export const <%- name %>Module = (sdk: typeof BaseSDK) => {
         return sdk.resolveAxiosResponse(async () => {
             sdk.checkPermission("<%- name %>", "<%- methodName %>");
 
+            const method = "<%- method %>";
             const toPath = compile("<%- filename.split(".ts")[0] %><%- endpoint %>");
-
-            const res = await sdk._axios!.request({
-                method: "<%- method %>",
+            const requestPayload = {
+                method,
                 url: toPath(data?.params),
                 params: data?.query,
                 data: data?.body,
@@ -46,7 +46,11 @@ export const <%- name %>Module = (sdk: typeof BaseSDK) => {
                 ...(data?.axiosConfig
                 ? sdk.resolveAxiosConfig(data.axiosConfig)
                 : undefined),
-            });
+            };
+
+            sdk.log("Sending Request:", requestPayload);
+
+            const res = await sdk._axios!.request(requestPayload);
 
             return res;
         }, data);

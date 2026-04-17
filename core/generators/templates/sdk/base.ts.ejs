@@ -15,19 +15,25 @@ export class BaseSDK {
 
     static resolveAxiosConfig(config: AxiosRequestConfig) {
         if (config?.headers) {
-        const headerKeys = Object.keys(config.headers);
+            const headerKeys = Object.keys(config.headers);
 
-        if (headerKeys.length) {
-            config.headers = headerKeys.reduce((headers, key) => {
-            headers[key.toLowerCase()] = config.headers![key];
+            if (headerKeys.length) {
+                config.headers = headerKeys.reduce((headers, key) => {
+                    headers[key.toLowerCase()] = config.headers![key];
 
-            return headers;
-            }, {} as Record<string, string>);
-        }
+                    return headers;
+                }, {} as Record<string, string>);
+            }
         }
 
         return config;
     };
+
+    static log(..args: unknown[]) {
+        if(this._options.logs) {
+            console.log(...args);
+        }
+    }
 
     static init(options?: TSDKOptions) {
         this._options = options;
