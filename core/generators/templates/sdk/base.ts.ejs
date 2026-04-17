@@ -29,7 +29,7 @@ export class BaseSDK {
         return config;
     };
 
-    static log(..args: unknown[]) {
+    static log(...args: unknown[]) {
         if(this._options.logs) {
             console.log(...args);
         }
