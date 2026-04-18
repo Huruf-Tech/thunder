@@ -132,8 +132,10 @@ export class Router {
   }
 
   protected toFullPath(endpoint: string) {
-    return "/" + (this.rootPath?.replace(/^\/|\/$/g, "") ?? "") +
+    const fullPath = (this.rootPath?.replace(/^\/|\/$/g, "") ?? "") +
       endpoint;
+
+    return /^\{?\//.test(fullPath) ? fullPath : ("/" + fullPath);
   }
 
   protected registerMethod(
