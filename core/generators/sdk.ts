@@ -14,7 +14,7 @@ import {
   zodToTs,
 } from "@oridune/zod-to-ts";
 import { Router, THandlerIOShapes, TMethod } from "../http/router.ts";
-import { ejsRender } from "../utils/ejsRender.ts";
+import { ejsRender } from "../utils/textRender.ts";
 import { writeTextFile } from "../scripts/lib/utility.ts";
 import { denoConfig } from "../utils/denoConfig.ts";
 import { sh } from "../scripts/lib/sh.ts";

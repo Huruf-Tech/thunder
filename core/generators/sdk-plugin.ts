@@ -1,6 +1,6 @@
 import { join } from "@std/path/posix/join";
 import { generateSDKContent, TGenerateSDKContentOpts } from "./sdk.ts";
-import { ejsRender } from "../utils/ejsRender.ts";
+import { ejsRender } from "../utils/textRender.ts";
 import { exists } from "@std/fs/exists";
 import { toFileUrl } from "@std/path/to-file-url";
 

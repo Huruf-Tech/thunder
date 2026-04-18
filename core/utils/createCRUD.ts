@@ -2,7 +2,7 @@
 import { TRouter } from "@/core/http/router.ts";
 import z from "zod";
 import { bodyAsJson, paramsAsJson, queryAsJson } from "@/core/http/utils.ts";
-import { Collection, ObjectId } from "mongodb";
+import { Collection, ObjectId, WithId } from "mongodb";
 import { Response } from "@/core/http/response.ts";
 
 export type TCrudDetails<T extends z.ZodObject> = {
@@ -43,6 +43,13 @@ export type TCrudOptions<T extends z.ZodObject, D = z.output<T>> = {
   };
   projection?: TCrudProjection<D> | Array<TCrudProjection<D>>;
   isolationFields?: TCrudIsolation<D>;
+  hooks?: {
+    beforeCreate?: (
+      data: D & { _id?: ObjectId },
+      req: Request,
+    ) => D | void | Promise<D | void>;
+    afterCreate?: (data: WithId<D>, req: Request) => void | Promise<void>;
+  };
 };
 
 const resolveJSONSchemaType = (ctx: {
@@ -106,12 +113,19 @@ export const createCRUD = <T extends z.ZodObject>(
         handler: async (req: Request) => {
           const body = $body.parse(await bodyAsJson(req));
 
+          const data = details.schema.parse({
+            ...body,
+            ...(await opts?.isolationFields?.(req)),
+          }) as any;
+
           const { insertedId } = await details.model.insertOne(
-            details.schema.parse({
-              ...body,
-              ...(await opts?.isolationFields?.(req)),
-            }) as any,
+            (await opts?.hooks?.beforeCreate?.(
+              data,
+              req,
+            )) ?? data,
           );
+
+          await opts?.hooks?.afterCreate?.({ _id: insertedId, ...data }, req);
 
           return Response.json({
             _id: insertedId.toString(),
