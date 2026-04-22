@@ -83,9 +83,9 @@ export const setupPlugin = async (options: {
 if (import.meta.main) {
   const { name, n, envs, clean } = parse(Deno.args);
 
-  const resolvedEnvs = envs instanceof Array
-    ? envs
-    : envs?.split(",").map((env: string) => env.trim());
+  const resolvedEnvs = typeof envs === "string"
+    ? envs?.split(",").map((env: string) => env.trim())
+    : envs;
 
   await setupPlugin({
     name: name ?? n,

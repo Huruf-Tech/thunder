@@ -26,16 +26,12 @@ export const updatePlugin = async (options: {
 
   await removePlugin({
     name: Options.name,
-    clean: Options.setup instanceof Array
-      ? Options.setup
-      : [EnvType.PRODUCTION],
+    clean: Options.setup,
     prompt: options.prompt,
   });
   await addPlugin({
     name: Options.name,
-    setup: Options.setup instanceof Array
-      ? Options.setup
-      : [EnvType.PRODUCTION],
+    setup: Options.setup,
     prompt: options.prompt,
   });
 };
@@ -43,9 +39,9 @@ export const updatePlugin = async (options: {
 if (import.meta.main) {
   const { name, n, setup } = parse(Deno.args);
 
-  const resolvedSetup = setup instanceof Array
-    ? setup
-    : setup?.split(",").map((env: string) => env.trim());
+  const resolvedSetup = typeof setup === "string"
+    ? setup?.split(",").map((env: string) => env.trim())
+    : setup;
 
   await updatePlugin({
     name: name ?? n,

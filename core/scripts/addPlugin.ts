@@ -193,9 +193,9 @@ export const addPlugin = async (options: {
 if (import.meta.main) {
   const { name, n, setup } = parse(Deno.args);
 
-  const resolvedSetup = setup instanceof Array
-    ? setup
-    : setup?.split(",").map((env: string) => env.trim());
+  const resolvedSetup = typeof setup === "string"
+    ? setup?.split(",").map((env: string) => env.trim())
+    : setup;
 
   await addPlugin({
     name: name ?? n,

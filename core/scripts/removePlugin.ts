@@ -71,9 +71,9 @@ export const removePlugin = async (options: {
 if (import.meta.main) {
   const { name, n, clean } = parse(Deno.args);
 
-  const resolvedClean = clean instanceof Array
-    ? clean
-    : clean?.split(",").map((env: string) => env.trim());
+  const resolvedClean = typeof clean === "string"
+    ? clean?.split(",").map((env: string) => env.trim())
+    : clean;
 
   await removePlugin({
     name: name ?? n,
