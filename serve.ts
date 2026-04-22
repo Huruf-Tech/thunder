@@ -1,4 +1,3 @@
-import "@/core/bootstrap.ts";
 import server from "./serve.base.ts";
 
 export default {
