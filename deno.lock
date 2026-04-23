@@ -25,6 +25,7 @@
     "jsr:@std/text@^1.0.17": "1.0.17",
     "npm:@oridune/zod-to-ts@^2.0.1": "2.0.1_typescript@5.9.3_zod@4.3.6",
     "npm:@types/ejs@^3.1.5": "3.1.5",
+    "npm:@types/picomatch@*": "4.0.3",
     "npm:@types/qs@^6.14.0": "6.15.0",
     "npm:ejs@^4.0.1": "4.0.1",
     "npm:handlebars@^4.7.9": "4.7.9",
@@ -151,6 +152,9 @@
     },
     "@types/ejs@3.1.5": {
       "integrity": "sha512-nv+GSx77ZtXiJzwKdsASqi+YQ5Z7vwHsTP0JY2SiQgjGckkBRKZnk8nIM+7oUZ1VCtuTz0+By4qVR7fqzp/Dfg=="
+    },
+    "@types/picomatch@4.0.3": {
+      "integrity": "sha512-iG0T6+nYJ9FAPmx9SsUlnwcq1ZVRuCXcVEvWnntoPlrOpwtSTKNDC9uVAxTsC3PUvJ+99n4RpAcNgBbHX3JSnQ=="
     },
     "@types/qs@6.15.0": {
       "integrity": "sha512-JawvT8iBVWpzTrz3EGw9BTQFg3BQNmwERdKE22vlTxawwtbyUSlMppvZYKLZzB5zgACXdXxbD3m1bXaMqP/9ow=="
