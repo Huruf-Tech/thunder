@@ -2,4 +2,4 @@
 set -e
 
 echo "[pre-commit] Running Deno checks..."
-npx -y lint-staged --config ./.lintstagedrc.json
+deno run -A core/scripts/lintStaged.ts
