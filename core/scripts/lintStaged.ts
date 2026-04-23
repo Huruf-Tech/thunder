@@ -39,6 +39,26 @@ export const getConfigFile = async (
   throw new Error(`Config file not found or invalid: ${configPath}`);
 };
 
+export const isPathSymlink = (path: string): boolean => {
+  try {
+    const parts = path.split("/");
+
+    let currentPath = "";
+
+    for (const part of parts) {
+      currentPath = currentPath ? `${currentPath}/${part}` : part;
+
+      if (Deno.lstatSync(currentPath).isSymlink) {
+        return true;
+      }
+    }
+  } catch {
+    // If the file doesn't exist or there's an error, we can assume it's not a symlink
+  }
+
+  return false;
+};
+
 export const lintStaged = async (options: {
   configPath?: string;
   allowSymlinks?: boolean;
@@ -55,18 +75,18 @@ export const lintStaged = async (options: {
     let matchedFiles = stagedFiles.filter((file) => isMatch(file));
 
     if (!options.allowSymlinks) {
-      matchedFiles = matchedFiles.filter((file) =>
-        !Deno.lstatSync(file).isSymlink
-      );
+      matchedFiles = matchedFiles.filter((file) => !isPathSymlink(file));
     }
 
     if (matchedFiles.length > 0) {
       console.log(`Running commands for pattern: ${pattern}`);
 
       for (const command of Array.isArray(commands) ? commands : [commands]) {
+        const fullCommand = [...command.split(" "), ...matchedFiles];
+
         console.log(`-- executing: ${command}`);
 
-        await sh([...command.split(" "), ...matchedFiles]);
+        await sh(fullCommand);
       }
     }
   }
