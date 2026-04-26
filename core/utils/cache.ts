@@ -1,7 +1,7 @@
 // deno-lint-ignore-file no-explicit-any
 import { hash } from "ohash";
 
-type AnyFn = (...args: any[]) => any;
+type AnyFn = (...args: any[]) => Promise<any>;
 
 type AwaitedReturn<T extends AnyFn> = Awaited<ReturnType<T>>;
 
@@ -17,13 +17,13 @@ function cacheWithTTL<T extends AnyFn>(
   options?: {
     keyResolver?: (...args: Parameters<T>) => string;
   },
-): (...args: Parameters<T>) => Promise<AwaitedReturn<T>> {
+): T {
   const cache = new Map<string, CacheEntry<AwaitedReturn<T>>>();
 
   const getKey = options?.keyResolver ??
     ((...args: Parameters<T>) => JSON.stringify(args));
 
-  return async function (...args: Parameters<T>): Promise<AwaitedReturn<T>> {
+  return async function (...args: Parameters<T>) {
     const key = getKey(...args);
     const now = Date.now();
 
@@ -63,7 +63,7 @@ function cacheWithTTL<T extends AnyFn>(
       cache.delete(key);
       throw err;
     }
-  };
+  } as T;
 }
 
 export function cache<T extends AnyFn>(
