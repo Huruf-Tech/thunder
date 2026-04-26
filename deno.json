@@ -38,6 +38,7 @@
     "ejs": "npm:ejs@^4.0.1",
     "handlebars": "npm:handlebars@^4.7.9",
     "mongodb": "npm:mongodb@^7.0.0",
+    "ohash": "npm:ohash@^2.0.11",
     "path-to-regexp": "npm:path-to-regexp@^8.3.0",
     "qs": "npm:qs@^6.14.1",
     "typescript": "npm:typescript@^5.9.3",
