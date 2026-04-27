@@ -119,16 +119,6 @@ export const linkPlugin = async (name: string, opts?: { cwd?: string }) => {
   await addPluginToImportMap(name);
 
   await symlink(
-    join(targetPath, "./routes"),
-    join(cwd, "./routes", name),
-  );
-
-  await symlink(
-    join(targetPath, "./hooks"),
-    join(cwd, "./hooks", name),
-  );
-
-  await symlink(
     join(targetPath, "./sdk-plugins"),
     join(cwd, "./sdk-plugins", name),
   );

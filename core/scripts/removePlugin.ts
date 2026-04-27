@@ -30,8 +30,7 @@ export const unlinkPlugin = async (name: string, opts?: { cwd?: string }) => {
 
   await removePluginFromImportMap(name);
 
-  await Deno.remove(join(cwd, "./routes", name), { recursive: true });
-  await Deno.remove(join(cwd, "./hooks", name), { recursive: true });
+  await Deno.remove(join(cwd, "./sdk-plugins", name), { recursive: true });
 };
 
 export const removePlugin = async (options: {

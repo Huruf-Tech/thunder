@@ -2,17 +2,8 @@ import { loadHooks } from "./hooks.ts";
 import { loadRoutes } from "./routes.ts";
 import { TMethod, TRouteExecutor } from "./router.ts";
 
-export const discover = async (
-  req: Request,
-  opts?: {
-    routes?: string;
-    hooks?: string;
-  },
-): Promise<TRouteExecutor> => {
+export const discover = async (req: Request): Promise<TRouteExecutor> => {
   const url = new URL(req.url);
-
-  const routesPath = opts?.routes ?? "routes";
-  const hooksPath = opts?.hooks ?? "hooks";
 
   const pathnameParts = url.pathname.split("/").filter(
     Boolean,
@@ -20,7 +11,6 @@ export const discover = async (
   const [namespace, ...endpointParts] = pathnameParts;
 
   const { fallback, module } = await loadRoutes(
-    routesPath,
     `./**/*.ts`,
     namespace + ".ts",
   );
@@ -41,7 +31,7 @@ export const discover = async (
       typeof exec === "function"
         ? await exec(
           req,
-          ...(await loadHooks(hooksPath, "./**/*.ts")),
+          ...(await loadHooks(`./**/*.ts`)),
         )
         : new Response("Not found", { status: 404 });
   }

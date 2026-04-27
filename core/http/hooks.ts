@@ -1,7 +1,8 @@
 import { expandGlob } from "@std/fs/expand-glob";
-import { join } from "@std/path/join";
 import { toFileUrl } from "@std/path/to-file-url";
-import { hooksCache } from "./constants.ts";
+import { cache } from "@/core/utils/cache.ts";
+import { listPlugins } from "@/core/lib/listPlugins.ts";
+import { join } from "@std/path/join";
 
 export type THook = {
   priority?: number;
@@ -22,48 +23,47 @@ export type THook = {
   ) => Response | void | Promise<Response | void>;
 };
 
-export const loadHooks = (
-  root: string,
+const importHook = async (path: string) => {
+  const mod = await import(toFileUrl(path).href);
+  const d = mod.default;
+
+  if (
+    d != null &&
+    typeof d === "object" &&
+    ("pre" in d || "post" in d)
+  ) return d as THook;
+
+  throw new Error(`Invalid hook encountered at: ${path}`);
+};
+
+export const loadHooks = cache(async (
   globPattern: string,
 ): Promise<THook[]> => {
-  const cacheKey = JSON.stringify([root, globPattern]);
+  const hooksDir = "./hooks";
+  const hooksRoot = join(Deno.cwd(), hooksDir);
+  const hooks: THook[] = [];
 
-  if (!hooksCache.has(cacheKey)) {
-    const rootDir = join(Deno.cwd(), root);
+  for await (
+    const entry of expandGlob(globPattern, {
+      includeDirs: false,
+      globstar: true,
+      root: hooksRoot,
+    })
+  ) hooks.push(await importHook(entry.path));
 
-    hooksCache.set(
-      cacheKey,
-      (async () => {
-        const hooks: THook[] = [];
+  const plugins = await listPlugins();
 
-        for await (
-          const entry of expandGlob(globPattern, {
-            followSymlinks: true,
-            canonicalize: true,
-            globstar: true,
-            root: rootDir,
-          })
-        ) {
-          if (entry.isFile) {
-            const mod = await import(toFileUrl(entry.path).href);
-            const d = mod.default;
-
-            if (
-              d != null &&
-              typeof d === "object" &&
-              ("pre" in d || "post" in d)
-            ) {
-              hooks.push(d as THook);
-            }
-          }
-        }
-
-        hooks.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
-
-        return hooks;
-      })(),
-    );
+  for (const plugin of plugins) {
+    for await (
+      const entry of expandGlob(globPattern, {
+        includeDirs: false,
+        globstar: true,
+        root: join(plugin, hooksDir),
+      })
+    ) hooks.push(await importHook(entry.path));
   }
 
-  return hooksCache.get(cacheKey)!;
-};
+  hooks.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+
+  return hooks;
+}, Infinity);
