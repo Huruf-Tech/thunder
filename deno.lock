@@ -24,6 +24,7 @@
     "jsr:@std/streams@^1.0.17": "1.0.17",
     "jsr:@std/text@^1.0.17": "1.0.17",
     "npm:@oridune/zod-to-ts@^2.0.1": "2.0.1_typescript@5.9.3_zod@4.3.6",
+    "npm:@types/ejs@*": "3.1.5",
     "npm:@types/ejs@^3.1.5": "3.1.5",
     "npm:@types/picomatch@*": "4.0.3",
     "npm:@types/qs@*": "6.15.0",

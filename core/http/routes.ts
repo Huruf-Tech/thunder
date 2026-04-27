@@ -25,7 +25,7 @@ export const findRouter = cache(async (
 
       if (typeof module.default?.route === "function") {
         return {
-          module,
+          router: module.default as Router,
         };
       }
     }
@@ -46,7 +46,7 @@ export const findRouter = cache(async (
 
         if (typeof module.default?.route === "function") {
           return {
-            module,
+            router: module.default as Router,
           };
         }
       }
@@ -55,7 +55,8 @@ export const findRouter = cache(async (
 
   return {
     fallback: true,
-    module: await import(toFileUrl(join(routesRoot, "index.ts")).href),
+    router: (await import(toFileUrl(join(routesRoot, "index.ts")).href))
+      .default as Router,
   };
 }, Infinity);
 
@@ -75,7 +76,7 @@ export const loadRouters = cache(async (globPattern: string) => {
     const module = await import(toFileUrl(entry.path).href);
 
     if (typeof module.default?.route === "function") {
-      routers.push(module as Router);
+      routers.push(module.default as Router);
     }
   }
 
@@ -92,7 +93,7 @@ export const loadRouters = cache(async (globPattern: string) => {
       const module = await import(toFileUrl(entry.path).href);
 
       if (typeof module.default?.route === "function") {
-        routers.push(module as Router);
+        routers.push(module.default as Router);
       }
     }
   }

@@ -10,12 +10,10 @@ export const discover = async (req: Request): Promise<TRouteExecutor> => {
   );
   const [namespace, ...endpointParts] = pathnameParts;
 
-  const { fallback, module } = await findRouter(
+  const { fallback, router } = await findRouter(
     `./**/*.ts`,
     namespace + ".ts",
   );
-
-  const router = module.default;
 
   const resolvedEndpoint = fallback
     ? `/${pathnameParts.join("/") ?? ""}`
