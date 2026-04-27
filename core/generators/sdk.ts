@@ -142,14 +142,16 @@ export const generateModules = async (
 ) => {
   const modules: Record<string, TSDKModuleDetails> = {};
 
-  for (const router of await loadRouters("./**/*.ts")) {
+  const routers = await loadRouters("./**/*.ts");
+
+  for (const router of routers) {
     if (modules[router.name]) {
       console.warn(`Duplicate router detected ${router.name}`);
     }
 
     const methods = routerToMethods(router, opts);
 
-    modules[router.name] = {
+    modules[`${router.name}.ts`] = {
       name: router.name,
       metadata: router.metadata,
       methods,
@@ -382,7 +384,6 @@ export const generateSDKContent = async (
     ...context,
     types: globalTypesMap,
   });
-  files["deno.json"] = await ejsRender(denoJsonTemplate, context);
 
   const { pluginNames, pluginFiles } = await syncPluginContent({
     pluginDir: join(opts?.cwd, opts?.pluginDir ?? "./sdk-plugins"),
@@ -390,6 +391,11 @@ export const generateSDKContent = async (
   });
 
   Object.assign(files, pluginFiles);
+
+  files["deno.json"] = await ejsRender(denoJsonTemplate, {
+    ...context,
+    workspace: pluginNames.map((p) => `plugins/${p}`),
+  });
 
   files["index.ts"] = await ejsRender(indexTemplate, {
     ...context,

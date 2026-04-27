@@ -1,9 +1,10 @@
 import { parseArgs as parse } from "@std/cli/parse-args";
 import { dirname, join, toFileUrl } from "@std/path";
 import { existsSync, expandGlob } from "@std/fs";
-import { deepMergeUnique, printStream } from "./lib/utility.ts";
+import { printStream } from "./lib/utility.ts";
 import { z } from "zod";
 
+import { mergeDenoConfig as _mergeDenoConfig } from "@/core/lib/mergeDenoConfig.ts";
 import { Confirm } from "@cliffy/prompt";
 
 export const getDenoConfig = async () => {
@@ -27,25 +28,10 @@ export const mergeDenoConfig = async (dir: string) => {
 
   const MainConfig = await getDenoConfig();
 
-  const ResultConfig = deepMergeUnique(MainConfig, TempConfig);
-
-  delete ResultConfig.id;
-  delete ResultConfig.version;
-  delete ResultConfig.title;
-  delete ResultConfig.description;
-  delete ResultConfig.homepage;
-  delete ResultConfig.icon;
-  delete ResultConfig.author;
-  delete ResultConfig.keywords;
-  delete ResultConfig.donate;
-
   await Deno.writeTextFile(
     join(Deno.cwd(), "deno.json"),
     JSON.stringify(
-      {
-        ...MainConfig,
-        ...ResultConfig,
-      },
+      _mergeDenoConfig(MainConfig, TempConfig),
       undefined,
       2,
     ),
