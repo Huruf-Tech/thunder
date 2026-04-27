@@ -96,4 +96,6 @@ export const loadRouters = cache(async (globPattern: string) => {
       }
     }
   }
+
+  return routers;
 }, Infinity);

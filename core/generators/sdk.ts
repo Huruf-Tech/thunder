@@ -1,5 +1,4 @@
 import { expandGlob } from "@std/fs/expand-glob";
-import { toFileUrl } from "@std/path/to-file-url";
 import { join } from "@std/path/posix/join";
 import { dirname } from "@std/path/dirname";
 import { basename } from "@std/path/basename";
@@ -18,6 +17,7 @@ import { ejsRender } from "../utils/textRender.ts";
 import { writeTextFile } from "../scripts/lib/utility.ts";
 import { denoConfig } from "../utils/denoConfig.ts";
 import { sh } from "../scripts/lib/sh.ts";
+import { loadRouters } from "@/core/http/routes.ts";
 
 export type TSDKMethodDetails = {
   method: TMethod;
@@ -135,7 +135,6 @@ export type TSDKModuleDetails = {
 };
 
 export const generateModules = async (
-  routesDir: string,
   opts?: {
     cwd?: string;
     skipBuildTypes?: boolean;
@@ -143,23 +142,14 @@ export const generateModules = async (
 ) => {
   const modules: Record<string, TSDKModuleDetails> = {};
 
-  for await (
-    const entry of expandGlob("./**/*.ts", {
-      root: join(opts?.cwd, routesDir),
-      globstar: true,
-      followSymlinks: true,
-      canonicalize: true,
-    })
-  ) {
-    if (modules[entry.name]) {
-      console.warn(`Duplicate router detected ${entry.name}`);
+  for (const router of await loadRouters("./**/*.ts")) {
+    if (modules[router.name]) {
+      console.warn(`Duplicate router detected ${router.name}`);
     }
-
-    const { default: router } = await import(toFileUrl(entry.path).href);
 
     const methods = routerToMethods(router, opts);
 
-    modules[entry.name] = {
+    modules[router.name] = {
       name: router.name,
       metadata: router.metadata,
       methods,
@@ -341,7 +331,6 @@ export const generateSDKContent = async (
   const files: Record<string, string> = {};
 
   const { modules, globalTypesMap } = await generateModules(
-    opts?.routesDir ?? "./routes",
     { cwd },
   );
 

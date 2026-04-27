@@ -34,7 +34,6 @@ export const generateOpenAPIContent = async (
   const paths: ZodOpenApiPathsObject = {};
 
   const { modules } = await generateModules(
-    opts?.routesDir ?? "./routes",
     { cwd, skipBuildTypes: true },
   );
 
