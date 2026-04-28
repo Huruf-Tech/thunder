@@ -309,6 +309,8 @@ export class Router {
 
   public group(name: string) {
     this.groupName = name;
+
+    return this;
   }
 
   public route(method: TMethod, endpoint: string) {
