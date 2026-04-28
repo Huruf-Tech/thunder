@@ -57,6 +57,16 @@ export class ThunderSDK extends BaseSDK {
         );
     }
 
+    static getGroup(module: object | string) {
+        if (typeof module === "object") {
+            return this._moduleGroup.get(module);
+        }
+
+        return this._moduleGroup.get(
+            this.getModule(module),
+        );
+    }
+
     static listActions(moduleName?: string) {
         const actions = (() => {
             if (this._actionsList) return this._actionsList;
