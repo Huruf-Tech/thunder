@@ -76,6 +76,7 @@ export class Router {
   > = new Map();
 
   public name: string;
+  public groupName?: string;
   public metadata?: TRouteMetadata;
 
   constructor(
@@ -305,6 +306,10 @@ export class Router {
       });
     };
   };
+
+  public group(name: string) {
+    this.groupName = name;
+  }
 
   public route(method: TMethod, endpoint: string) {
     let targetEndpoint = endpoint;

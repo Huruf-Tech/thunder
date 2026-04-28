@@ -62,6 +62,10 @@ export const <%- name %>Module = (sdk: typeof BaseSDK) => {
     (methods.<%- methodName %> as any).__scope = "<%- name %>";
 <% } -%>
 
+<% if(typeof group === "string") { -%>
+    sdk["_moduleGroup"].set(methods, "<%- group %>");
+<% } -%>
+
 <% if(typeof metadata === "object") { -%>
     sdk["_moduleMetadata"].set(methods, <%- JSON.stringify(metadata) %>);
 <% } -%>

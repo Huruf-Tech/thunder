@@ -10,4 +10,4 @@ export default new Router("/api/", function home(router) {
       });
     };
   });
-});
+}).group("Default");

@@ -45,4 +45,4 @@ export default new Router("/", function index(router) {
       },
     };
   });
-});
+}).group("Default");
