@@ -61,6 +61,8 @@ export const generateApp = async (options?: {
 
   await writeJSONFile(packageJSONPath, packageJSON);
 
+  await Deno.remove(join(outputPath, ".git"), { recursive: true });
+
   await sh([
     "npm",
     "install",
