@@ -21,15 +21,17 @@ export const generateApp = async (options?: {
     }
   }
 
+  await Deno.mkdir(outputPath, { recursive: true });
+
   const command = [
     "git",
     "clone",
     "--single-branch",
     "https://github.com/Huruf-Tech/thunder-ui",
-    outputPath,
+    ".",
   ];
 
-  await sh(command, { cwd: Deno.cwd() });
+  await sh(command, { cwd: outputPath });
 
   const sdkDir = join(Deno.cwd(), "./public/www");
 
