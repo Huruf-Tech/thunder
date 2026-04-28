@@ -177,7 +177,7 @@ export const createPackageJSON = (
   opts?: Partial<IPackageJSON>,
 ): IPackageJSON => ({
   name: opts?.name ?? "thunder-sdk",
-  version: "0.0.0",
+  version: opts?.version ?? "0.0.0",
   private: true,
   main: "./dist/index.js",
   scripts: {
@@ -190,6 +190,7 @@ export const createPackageJSON = (
 });
 
 export const generateNpmModule = async (opts: {
+  version: string;
   sdkDir: string;
 }) => {
   const script = "./scripts/buildNpm.ts";
@@ -198,6 +199,7 @@ export const generateNpmModule = async (opts: {
   const modulePath = join(opts.sdkDir, "npm");
 
   const packageJSON = createPackageJSON({
+    version: opts.version,
     private: undefined,
     main: undefined,
     scripts: undefined,
@@ -412,6 +414,7 @@ export const generateSDKContent = async (
 
     if (!opts?.skipNpmBuild) {
       await generateNpmModule({
+        version,
         sdkDir: outputPath,
       });
     }
