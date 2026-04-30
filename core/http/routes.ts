@@ -64,7 +64,10 @@ export const loadRouters = cache(async (globPattern: string) => {
   const routesDir = "./routes";
   const routesRoot = join(Deno.cwd(), routesDir);
 
-  const routers = [];
+  const routers: Array<{
+    router: Router;
+    path: string;
+  }> = [];
 
   for await (
     const entry of expandGlob(globPattern, {
@@ -76,7 +79,10 @@ export const loadRouters = cache(async (globPattern: string) => {
     const module = await import(toFileUrl(entry.path).href);
 
     if (typeof module.default?.route === "function") {
-      routers.push(module.default as Router);
+      routers.push({
+        router: module.default as Router,
+        path: entry.path,
+      });
     }
   }
 
@@ -93,7 +99,10 @@ export const loadRouters = cache(async (globPattern: string) => {
       const module = await import(toFileUrl(entry.path).href);
 
       if (typeof module.default?.route === "function") {
-        routers.push(module.default as Router);
+        routers.push({
+          router: module.default as Router,
+          path: entry.path,
+        });
       }
     }
   }

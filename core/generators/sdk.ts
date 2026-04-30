@@ -145,14 +145,14 @@ export const generateModules = async (
 
   const routers = await loadRouters("./**/*.ts");
 
-  for (const router of routers) {
+  for (const { router, path } of routers) {
     if (modules[router.name]) {
       console.warn(`Duplicate router detected ${router.name}`);
     }
 
     const methods = routerToMethods(router, opts);
 
-    modules[`${router.name}.ts`] = {
+    modules[basename(path)] = {
       name: router.name,
       group: router.groupName,
       metadata: router.metadata,
