@@ -92,7 +92,7 @@ export const generateApp = async (options: {
           // Do not replace any file that is not included in this list.
           if (
             existsSync(TargetPath) && [
-              /^(\\|\/)?(core)(\\|\/)?/,
+              /^(\\|\/)?(src(\\|\/)core)(\\|\/)?/,
             ].reduce(
               (continues, expect) =>
                 continues &&
