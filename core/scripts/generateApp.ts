@@ -1,86 +1,175 @@
 import { parseArgs as parse } from "@std/cli/parse-args";
-import { join, normalize, relative } from "@std/path";
-import { sh } from "./lib/sh.ts";
-import { exists } from "@std/fs/exists";
-import { expandGlob } from "@std/fs/expand-glob";
-import { generateSDK } from "./generateSDK.ts";
-import { readJSONFile, writeJSONFile } from "./lib/utility.ts";
-import { IPackageJSON } from "../generators/sdk.ts";
+import { dirname, join, normalize, relative } from "@std/path";
+import { exists, existsSync, expandGlob } from "@std/fs";
+import {
+  deepMergeUnique,
+  printStream,
+  readJSONFile,
+  writeJSONFile,
+} from "./lib/utility.ts";
+import { z } from "zod";
 
-export const generateApp = async (options?: {
-  overwrite?: boolean;
+import { Confirm } from "@cliffy/prompt";
+import { generateSDK } from "@/core/scripts/generateSDK.ts";
+import { IPackageJSON } from "@/core/generators/sdk.ts";
+import { sh } from "@/core/scripts/lib/sh.ts";
+
+export const generateApp = async (options: {
+  template?: string;
+  forceSync?: boolean;
+  prompt?: boolean;
 }) => {
-  const outputPath = join(Deno.cwd(), "./public/app");
-  const alreadyExists = await exists(outputPath);
+  const Options = z.object({
+    forceSync: z.boolean().optional().default(false),
+    template: z.string().optional().default("master"),
+  }).parse(options);
 
-  if (alreadyExists) {
-    if (options?.overwrite) {
-      await Deno.remove(outputPath, { recursive: true });
-    } else {
-      throw new Error("App content already exists!");
+  const RepositoryPath = "Huruf-Tech/thunder-ui";
+  const GitRepoUrl = new URL(RepositoryPath, "https://github.com");
+  const TempPath = join(Deno.cwd(), "_temp", RepositoryPath);
+  const AppPath = join(Deno.cwd(), "./public/app");
+  const Pull = existsSync(TempPath);
+
+  const alreadyExists = await exists(AppPath);
+
+  if (
+    alreadyExists &&
+    options.prompt &&
+    !(await Confirm.prompt({
+      message:
+        `Updating the app will overwrite any changes made to the core and template files! Are you sure you want to continue?`,
+    }))
+  ) return;
+
+  const Command = new Deno.Command("git", {
+    args: Pull ? ["pull", "origin", Options.template, "--progress"] : [
+      "clone",
+      "--single-branch",
+      "--branch",
+      Options.template,
+      GitRepoUrl.toString(),
+      TempPath,
+      "--progress",
+    ],
+    cwd: Pull ? TempPath : undefined,
+    stdout: "piped",
+    stderr: "piped",
+  });
+
+  const Process = Command.spawn();
+
+  const [Out] = await Promise.all([
+    printStream(Process.stdout),
+    printStream(Process.stderr),
+  ]);
+
+  const Status = await Process.status;
+
+  syncApp: if (Status.success) {
+    if (
+      !Options.forceSync &&
+      Out.find((_) => _.includes("Already up to date"))
+    ) break syncApp;
+
+    // Create Files
+    for (
+      const Glob of ["**/**/*"].map((pattern) =>
+        expandGlob(pattern, {
+          root: TempPath,
+          globstar: true,
+        })
+      )
+    ) {
+      for await (const Entry of Glob) {
+        // Do not include .git folder
+        if (
+          !Entry.isDirectory &&
+          !/^(\\|\/)?(\.git)(\\|\/)?/.test(Entry.path.replace(TempPath, ""))
+        ) {
+          const SourcePath = Entry.path;
+          const TargetPath = SourcePath.replace(TempPath, AppPath);
+
+          // Do not replace any file that is not included in this list.
+          if (
+            existsSync(TargetPath) && [
+              /^(\\|\/)?(core)(\\|\/)?/,
+            ].reduce(
+              (continues, expect) =>
+                continues &&
+                !expect.test(Entry.path.replace(TempPath, "")),
+              true,
+            )
+          ) continue;
+
+          const TargetDirectory = dirname(TargetPath);
+
+          await Deno.mkdir(TargetDirectory, { recursive: true }).catch(() => {
+            // Do nothing...
+          });
+
+          await Deno.copyFile(SourcePath, TargetPath);
+        }
+      }
     }
-  }
 
-  await Deno.mkdir(outputPath, { recursive: true });
+    const sdkDir = join(Deno.cwd(), "./public/www");
 
-  const command = [
-    "git",
-    "clone",
-    "--single-branch",
-    "https://github.com/Huruf-Tech/thunder-ui",
-    ".",
-  ];
+    let sdkPath = (await Array.fromAsync(
+      expandGlob("sdk@*", {
+        globstar: true,
+        root: sdkDir,
+        includeDirs: true,
+      }),
+      (entry) => entry.isDirectory ? entry.path : undefined,
+    )).filter(Boolean).pop();
 
-  await sh(command, { cwd: outputPath });
+    if (!sdkPath) {
+      const version = "0.0.1";
 
-  const sdkDir = join(Deno.cwd(), "./public/www");
+      await generateSDK({ version });
 
-  let sdkPath = (await Array.fromAsync(
-    expandGlob("sdk@*", {
-      globstar: true,
-      root: sdkDir,
-      includeDirs: true,
-    }),
-    (entry) => entry.isDirectory ? entry.path : undefined,
-  )).filter(Boolean).pop();
+      sdkPath = join(sdkDir, `sdk@${version}`);
+    }
 
-  if (!sdkPath) {
-    const version = "0.0.1";
+    const tempPackageJSONPath = join(TempPath, "package.json");
+    const packageJSONPath = join(AppPath, "package.json");
 
-    await generateSDK({ version });
+    const tempPackageJSON = await readJSONFile<IPackageJSON>(
+      tempPackageJSONPath,
+    );
+    const packageJSON = await readJSONFile<IPackageJSON>(packageJSONPath);
 
-    sdkPath = join(sdkDir, `sdk@${version}`);
-  }
+    const updatedPackageJSON = deepMergeUnique(packageJSON, tempPackageJSON);
 
-  const packageJSONPath = join(outputPath, "package.json");
-  const packageJSON = await readJSONFile<IPackageJSON>(packageJSONPath);
+    (updatedPackageJSON.dependencies ??= {})["thunder-sdk"] = `file:///${
+      normalize(relative(AppPath, sdkPath))
+    }/npm`;
 
-  (packageJSON.dependencies ??= {})["thunder-sdk"] = `file:///${
-    normalize(relative(outputPath, sdkPath))
-  }/npm`;
+    await writeJSONFile(packageJSONPath, updatedPackageJSON);
 
-  await writeJSONFile(packageJSONPath, packageJSON);
+    await sh([
+      "npm",
+      "install",
+    ], { cwd: AppPath });
 
-  await Deno.remove(join(outputPath, ".git"), { recursive: true });
-
-  await sh([
-    "npm",
-    "install",
-  ], { cwd: outputPath });
-
-  await sh([
-    "npm",
-    "run",
-    "build",
-  ], { cwd: outputPath });
+    await sh([
+      "npm",
+      "run",
+      "build",
+    ], { cwd: AppPath });
+  } else throw new Error("We were unable to sync app!");
 };
 
 if (import.meta.main) {
-  const { overwrite } = parse(Deno.args);
+  const { template, t, forceSync } = parse(Deno.args);
 
-  await generateApp({ overwrite });
+  await generateApp({
+    template: template ?? t,
+    forceSync,
+    prompt: true,
+  });
 
-  console.info("Success");
+  console.info("App has been synced successfully!");
 
   Deno.exit();
 }

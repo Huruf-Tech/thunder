@@ -172,7 +172,7 @@ export interface IPackageJSON {
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
 
-  [K: string]: unknown;
+  [K: string | number | symbol]: unknown;
 }
 
 export const createPackageJSON = (
