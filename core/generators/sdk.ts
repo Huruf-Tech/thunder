@@ -76,6 +76,30 @@ export const routerToMethods = (router: Router, opts?: {
             if ("meta" in schema && typeof schema.meta === "function") {
               const meta = schema.meta() as Record<string, unknown> | undefined;
 
+              if (schema instanceof z.ZodRecord) {
+                const def = schema.def;
+
+                const keySchema = def.keyType;
+                const valueSchema = def.valueType;
+
+                const keyResult = zodToTs(keySchema, {
+                  auxiliaryTypeStore,
+                  overrideFunction: overrideFunction(keySchema),
+                  io: key === "return" ? "output" : "input",
+                });
+
+                const valueResult = zodToTs(valueSchema, {
+                  auxiliaryTypeStore,
+                  overrideFunction: overrideFunction(valueSchema),
+                  io: key === "return" ? "output" : "input",
+                });
+
+                return ts.factory.createTypeReferenceNode(
+                  ts.factory.createIdentifier("Record"),
+                  [keyResult.node, valueResult.node],
+                );
+              }
+
               if (schema instanceof z.ZodCustom) {
                 let type = "unknown";
 
