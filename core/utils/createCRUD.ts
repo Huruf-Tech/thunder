@@ -15,7 +15,10 @@ export type TCrudDetails<T extends z.ZodObject> = {
   updateSchema?: z.ZodObject;
 };
 
-export type TCrudIsolation<T> = (req: Request) =>
+export type TCrudIsolation<T> = (
+  req: Request,
+  action: "create" | "get" | "update" | "del" | "count",
+) =>
   | {
     [K in keyof T]?: unknown;
   }
@@ -115,7 +118,7 @@ export const createCRUD = <T extends z.ZodObject>(
 
           const data = details.schema.parse({
             ...body,
-            ...(await opts?.isolationFields?.(req)),
+            ...(await opts?.isolationFields?.(req, "create")),
           }) as any;
 
           const { insertedId } = await details.model.insertOne(
@@ -147,7 +150,7 @@ export const createCRUD = <T extends z.ZodObject>(
         }),
         handler: async (req: Request) => {
           const count = await details.model.countDocuments(
-            await opts?.isolationFields?.(req) as any,
+            await opts?.isolationFields?.(req, "count") as any,
           );
 
           return Response.json({ count } satisfies z.output<typeof $return>);
@@ -184,7 +187,7 @@ export const createCRUD = <T extends z.ZodObject>(
             {
               $match: {
                 ...(params.id ? { _id: new ObjectId(params.id) } : {}),
-                ...(await opts?.isolationFields?.(req)),
+                ...(await opts?.isolationFields?.(req, "get")),
               } as any,
             },
             ...(opts?.projection
@@ -235,7 +238,7 @@ export const createCRUD = <T extends z.ZodObject>(
           const { modifiedCount } = await details.model.updateOne(
             {
               _id: new ObjectId(params.id),
-              ...(await opts?.isolationFields?.(req)),
+              ...(await opts?.isolationFields?.(req, "update")),
             } as any,
             {
               $set: body as any,
@@ -261,7 +264,7 @@ export const createCRUD = <T extends z.ZodObject>(
 
           const { deletedCount } = await details.model.deleteOne({
             _id: new ObjectId(params.id),
-            ...(await opts?.isolationFields?.(req)),
+            ...(await opts?.isolationFields?.(req, "del")),
           } as any);
 
           if (!deletedCount) throw new Error("No record deleted!");
@@ -331,9 +334,10 @@ export const paginationSchema = z.object(
       .describe(
         "Provide a sorting information in mongodb sort object format",
       ),
-    project: z.record(z.string(), z.number().min(0).max(1)).optional().describe(
-      "Provide a projection information in mongodb project object format",
-    ),
+    project: z.record(z.string(), z.coerce.number().min(0).max(1)).optional()
+      .describe(
+        "Provide a projection information in mongodb project object format",
+      ),
   },
 ).meta({ tsLabel: "TPagination" });
 
