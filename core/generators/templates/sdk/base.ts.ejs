@@ -137,10 +137,10 @@ export class BaseSDK {
     static async clearCache() {
         if(typeof this._options?.cache?.delete !== "function")
             throw new Error("A cache delete function is not defined!");
-            
+
         const keys = await this.cacheKeys();
         
-        await Promise.all(keys.map(key => this._options.cache.delete(key)));
+        await Promise.all(keys.map(key => this._options!.cache!.delete!(key)));
     }
 
     static async cacheKeys(startsWith?: string) {
