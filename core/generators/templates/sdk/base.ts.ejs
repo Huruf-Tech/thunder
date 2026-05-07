@@ -61,13 +61,14 @@ export class BaseSDK {
             }
         }));
 
+        await this.clearCache();
+
         delete this._options;
         delete this._axios;
 
         this._useCachingMethods = new Map();
         this._cachingActivity = new Map();
         this._cacheNamespaces = this._cacheNamespacesDefault;
-
     }
 
     static isPermitted = (scope: string | Function & { __scope?: string }, action?: string): boolean => {
@@ -131,6 +132,12 @@ export class BaseSDK {
             throw new Error("A cache delete function is not defined!");
 
         return await this._options.cache.delete(this.resolveCacheKey(keys));
+    }
+
+    static async clearCache() {
+        const keys = await this.cacheKeys();
+        
+        await Promise.all(keys.map(key => this._options.cache.delete(key)));
     }
 
     static async cacheKeys(startsWith?: string) {
