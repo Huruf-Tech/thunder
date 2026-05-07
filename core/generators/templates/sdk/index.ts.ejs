@@ -26,7 +26,7 @@ export class ThunderSDK extends BaseSDK {
     static <%- name %> = <%- name %>Module(this);
 <% } -%>
 
-    static plugins = {
+    static override plugins = {
 <% for (const pluginName of pluginsToImport) { -%>
         <%- pluginName %>: <%- pluginName %>Entry,
 <% } -%>

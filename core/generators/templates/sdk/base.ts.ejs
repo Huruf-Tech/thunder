@@ -4,16 +4,22 @@ import type { TSDKOptions, TCacheKey, TCacheOptions } from "./types.ts";
 export class BaseSDK {
     protected static _moduleGroup = new WeakMap<object, string>();
     protected static _moduleMetadata = new WeakMap<object, Record<string, unknown>>();
-        
+
+    protected static _useCachingMethods = new Map<string, unknown>();
     protected static _cachingActivity = new Map<string, {
         controller: AbortController,
         resultPromise: unknown,
         timestamp: number,
     }>();
+    protected static _cacheNamespacesDefault: Record<string, string | null> = {
+        __internal: "__thunder-sdk:cache",
+    };
+    protected static _cacheNamespaces = this._cacheNamespacesDefault;
 
     static _options?: TSDKOptions;
     static _axios?: AxiosInstance;
-    static _useCachingMethods = new Map<string, unknown>();
+
+    static plugins: Record<string, any> = {};
 
     static resolveAxiosConfig(config: AxiosRequestConfig) {
         if (config?.headers) {
@@ -33,13 +39,35 @@ export class BaseSDK {
 
     static log(...args: unknown[]) {
         if(this._options?.logs) {
-            console.log(...args);
+            console.log("Thunder SDK::", ...args);
         }
     }
 
-    static init(options?: TSDKOptions) {
+    static async init(options?: TSDKOptions) {
         this._options = options;
         this._axios = axios.create(options?.axiosConfig);
+
+        await Promise.all(Object.values(this.plugins).map(async plugin => {
+            if(typeof plugin.init === "function") {
+                await plugin.init();
+            }
+        }));
+    }
+
+    static async clean() {
+        await Promise.all(Object.values(this.plugins).map(async plugin => {
+            if(typeof plugin.clean === "function") {
+                await plugin.clean();
+            }
+        }));
+
+        delete this._options;
+        delete this._axios;
+
+        this._useCachingMethods = new Map();
+        this._cachingActivity = new Map();
+        this._cacheNamespaces = this._cacheNamespacesDefault;
+
     }
 
     static isPermitted = (scope: string | Function & { __scope?: string }, action?: string): boolean => {
@@ -51,8 +79,9 @@ export class BaseSDK {
             throw new Error(`You are not authorized to perform this action! Missing permission '${scope}.${action}'!`);
     }
 
-    static resolveCacheKey(keys: TCacheKey, namespace = "__thunder-sdk:cache") {
-        return `${namespace}:${(keys instanceof Array ? keys : [keys]).filter(Boolean).join(":")}`;
+    static resolveCacheKey(keys: TCacheKey, namespace?: string) {
+        const internalNamespaces = Object.values(this._cacheNamespaces);
+        return [...internalNamespaces, namespace, ...(keys instanceof Array ? keys : [keys])].filter(Boolean).join(":");
     }
 
     static async setCache(keys: TCacheKey, value: any) {
