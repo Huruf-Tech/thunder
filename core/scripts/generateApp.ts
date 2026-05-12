@@ -1,5 +1,6 @@
 import { parseArgs as parse } from "@std/cli/parse-args";
-import { dirname, join, normalize, relative } from "@std/path";
+import { dirname, join, relative } from "@std/path";
+import { normalize } from "@std/path/posix/normalize";
 import { exists, existsSync, expandGlob } from "@std/fs";
 import {
   deepMergeUnique,
