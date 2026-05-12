@@ -74,7 +74,7 @@ export const $objectId = z.preprocess((val) => {
   }
 
   return val;
-}, z.instanceof(ObjectId)).meta({ tsType: "string" });
+}, z.instanceof(ObjectId).meta({ tsType: "string" }));
 
 export const createCRUD = <T extends z.ZodObject>(
   details: TCrudDetails<T>,
@@ -330,7 +330,9 @@ export const paginationSchema = z.object(
     filters: filtersSchema.optional().describe("Client side filters"),
     offset: z.coerce.number().min(0).default(0),
     limit: z.coerce.number().min(1).max(2000).default(2000),
-    sort: z.record(z.string(), z.coerce.number().min(-1).max(1)).default({ _id: -1 })
+    sort: z.record(z.string(), z.coerce.number().min(-1).max(1)).default({
+      _id: -1,
+    })
       .describe(
         "Provide a sorting information in mongodb sort object format",
       ),
