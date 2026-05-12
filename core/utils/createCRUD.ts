@@ -328,9 +328,9 @@ export const filtersSchema = z.union([basicFilterSchema, multiFilterSchema])
 export const paginationSchema = z.object(
   {
     filters: filtersSchema.optional().describe("Client side filters"),
-    offset: z.number().min(0).default(0),
-    limit: z.number().min(1).max(2000).default(2000),
-    sort: z.record(z.string(), z.number().min(-1).max(1)).default({ _id: -1 })
+    offset: z.coerce.number().min(0).default(0),
+    limit: z.coerce.number().min(1).max(2000).default(2000),
+    sort: z.record(z.string(), z.coerce.number().min(-1).max(1)).default({ _id: -1 })
       .describe(
         "Provide a sorting information in mongodb sort object format",
       ),
