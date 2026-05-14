@@ -114,15 +114,21 @@ export const generateApp = async (options: {
     }
 
     const sdkDir = join(Deno.cwd(), "./public/www");
-
-    let sdkPath = (await Array.fromAsync(
+    const sdkPaths = (await Array.fromAsync(
       expandGlob("sdk@*", {
         globstar: true,
         root: sdkDir,
         includeDirs: true,
       }),
       (entry) => entry.isDirectory ? entry.path : undefined,
-    )).filter(Boolean).pop();
+    )).filter(Boolean) as string[];
+
+    let sdkPath = sdkPaths.sort((a, b) =>
+      a.localeCompare(b, undefined, {
+        numeric: true,
+        sensitivity: "base",
+      })
+    ).pop();
 
     if (!sdkPath) {
       const version = "0.0.1";
