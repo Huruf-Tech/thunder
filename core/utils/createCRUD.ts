@@ -2,7 +2,7 @@
 import { TRouter } from "@/core/http/router.ts";
 import z from "zod";
 import { bodyAsJson, paramsAsJson, queryAsJson } from "@/core/http/utils.ts";
-import { Collection, ObjectId, WithId } from "mongodb";
+import { Collection, ObjectId, UpdateResult, WithId } from "mongodb";
 import { Response } from "@/core/http/response.ts";
 
 export type TCrudDetails<T extends z.ZodObject> = {
@@ -52,6 +52,17 @@ export type TCrudOptions<T extends z.ZodObject, D = z.output<T>> = {
       req: Request,
     ) => D | void | Promise<D | void>;
     afterCreate?: (data: WithId<D>, req: Request) => void | Promise<void>;
+    beforeUpdate?: (
+      _id: ObjectId,
+      data: Partial<D>,
+      req: Request,
+    ) => Partial<D> | void | Promise<Partial<D> | void>;
+    afterUpdate?: (
+      _id: ObjectId,
+      results: UpdateResult<Partial<D>>,
+      data: Partial<D>,
+      req: Request,
+    ) => void | Promise<void>;
   };
 };
 
@@ -235,17 +246,26 @@ export const createCRUD = <T extends z.ZodObject>(
           const params = $params.parse(paramsAsJson(req));
           const body = $body.parse(await bodyAsJson(req));
 
-          const { modifiedCount } = await details.model.updateOne(
+          const _id = new ObjectId(params.id);
+          const $set: any =
+            await opts?.hooks?.beforeUpdate?.(_id, body as any, req) ??
+              body;
+
+          const results = await details.model.updateOne(
             {
-              _id: new ObjectId(params.id),
+              _id,
               ...(await opts?.isolationFields?.(req, "update")),
             } as any,
             {
-              $set: body as any,
+              $set,
             },
           );
 
-          if (!modifiedCount) throw new Error("No record updated!");
+          if (opts?.hooks?.afterUpdate) {
+            await opts.hooks.afterUpdate(_id, results, $set, req);
+          } else if (!results.modifiedCount) {
+            throw new Error("No record updated!");
+          }
 
           return Response.ok();
         },
