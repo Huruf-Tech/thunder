@@ -106,7 +106,7 @@ export const $objectId = z.preprocess((val) => {
   }
 
   return val;
-}, z.instanceof(ObjectId).meta({ tsType: "string" }));
+}, z.instanceof(ObjectId)).meta({ tsType: "string" });
 
 export const createCRUD = <T extends z.ZodObject>(
   details: TCrudDetails<T>,
