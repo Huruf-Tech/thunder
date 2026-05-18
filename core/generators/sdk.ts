@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-explicit-any
 import { expandGlob } from "@std/fs/expand-glob";
 import { join } from "@std/path/posix/join";
 import { dirname } from "@std/path/dirname";
@@ -68,70 +69,112 @@ export const routerToMethods = (router: Router, opts?: {
 
           const overrideFunction: (
             root?: z.z.core.$ZodType,
-          ) => OptionalTypeOverrideFunction = (root) =>
-          (
-            schema,
-            ts,
-          ) => {
-            if ("meta" in schema && typeof schema.meta === "function") {
-              const meta = schema.meta() as Record<string, unknown> | undefined;
+          ) => OptionalTypeOverrideFunction = (root) => (schema, ts) => {
+            const ioType = key === "return" ? "output" : "input";
 
-              if (schema instanceof z.ZodRecord) {
-                const def = schema.def;
+            const meta = "meta" in schema && typeof schema.meta === "function"
+              ? (schema.meta() as Record<string, unknown> | undefined)
+              : undefined;
 
-                const keySchema = def.keyType;
-                const valueSchema = def.valueType;
+            /**
+             * Manual escape hatch:
+             *
+             * z.string()
+             *   .transform((v) => new Date(v))
+             *   .meta({ tsType: "Date" })
+             */
+            if (typeof meta?.tsType === "string") {
+              return ts.factory.createTypeReferenceNode(
+                ts.factory.createIdentifier(meta.tsType),
+              );
+            }
 
-                const keyResult = zodToTs(keySchema, {
+            /**
+             * Handle Zod transform / pipe / effects-like schemas.
+             *
+             * For input schemas, unwrap to the inner input schema.
+             * For output schemas, you need meta.tsType for correctness.
+             */
+            const def = (schema as any).def ?? (schema as any)._def;
+
+            if (
+              def?.type === "transform" ||
+              def?.type === "pipe" ||
+              def?.type === "effects" ||
+              def?.typeName === "ZodEffects" ||
+              def?.typeName === "ZodPipe" ||
+              def?.typeName === "ZodTransform"
+            ) {
+              const innerSchema = def.schema ??
+                def.innerType ??
+                def.in ??
+                def.input ??
+                def.left;
+
+              if (innerSchema) {
+                const result = zodToTs(innerSchema, {
                   auxiliaryTypeStore,
-                  overrideFunction: overrideFunction(keySchema),
-                  io: key === "return" ? "output" : "input",
+                  overrideFunction: overrideFunction(innerSchema),
+                  io: ioType,
                 });
 
-                const valueResult = zodToTs(valueSchema, {
+                return result.node;
+              }
+
+              return ts.factory.createKeywordTypeNode(
+                ts.SyntaxKind.UnknownKeyword,
+              );
+            }
+
+            if (schema instanceof z.ZodRecord) {
+              const def = schema.def;
+
+              const keySchema = def.keyType;
+              const valueSchema = def.valueType;
+
+              const keyResult = zodToTs(keySchema, {
+                auxiliaryTypeStore,
+                overrideFunction: overrideFunction(keySchema),
+                io: ioType,
+              });
+
+              const valueResult = zodToTs(valueSchema, {
+                auxiliaryTypeStore,
+                overrideFunction: overrideFunction(valueSchema),
+                io: ioType,
+              });
+
+              return ts.factory.createTypeReferenceNode(
+                ts.factory.createIdentifier("Record"),
+                [keyResult.node, valueResult.node],
+              );
+            }
+
+            if (schema instanceof z.ZodCustom) {
+              return ts.factory.createKeywordTypeNode(
+                ts.SyntaxKind.UnknownKeyword,
+              );
+            }
+
+            if (
+              typeof meta?.tsLabel === "string" &&
+              root !== schema
+            ) {
+              if (!globalTypesMap.has(meta.tsLabel)) {
+                const { node } = zodToTs(schema, {
                   auxiliaryTypeStore,
-                  overrideFunction: overrideFunction(valueSchema),
-                  io: key === "return" ? "output" : "input",
+                  overrideFunction: overrideFunction(schema),
+                  io: ioType,
                 });
 
-                return ts.factory.createTypeReferenceNode(
-                  ts.factory.createIdentifier("Record"),
-                  [keyResult.node, valueResult.node],
-                );
+                const typeAlias = createTypeAlias(node, meta.tsLabel);
+
+                globalTypesMap.set(meta.tsLabel, printNode(typeAlias));
               }
 
-              if (schema instanceof z.ZodCustom) {
-                let type = "unknown";
-
-                if (typeof meta?.tsType === "string") {
-                  type = meta.tsType;
-                }
-
-                return ts.factory.createTypeReferenceNode(
-                  ts.factory.createIdentifier(type),
-                );
-              }
-
-              if (
-                typeof meta?.tsLabel === "string" &&
-                root !== schema
-              ) {
-                if (!globalTypesMap.has(meta.tsLabel)) {
-                  const { node } = zodToTs(schema, {
-                    auxiliaryTypeStore,
-                    overrideFunction: overrideFunction(schema),
-                    io: key === "return" ? "output" : "input",
-                  });
-
-                  const typeAlias = createTypeAlias(node, meta.tsLabel);
-
-                  globalTypesMap.set(meta.tsLabel, printNode(typeAlias));
-                }
-
-                return ts.factory.createTypeReferenceNode(
-                  ts.factory.createIdentifier(meta.tsLabel),
-                );
-              }
+              return ts.factory.createTypeReferenceNode(
+                ts.factory.createIdentifier(meta.tsLabel),
+              );
             }
           };
 
