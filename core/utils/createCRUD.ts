@@ -2,8 +2,16 @@
 import { TRouter } from "@/core/http/router.ts";
 import z from "zod";
 import { bodyAsJson, paramsAsJson, queryAsJson } from "@/core/http/utils.ts";
-import { Collection, ObjectId, UpdateResult, WithId } from "mongodb";
+import {
+  ClientSession,
+  Collection,
+  DeleteResult,
+  ObjectId,
+  UpdateResult,
+  WithId,
+} from "mongodb";
 import { Response } from "@/core/http/response.ts";
+import { mongodb } from "@/database.ts";
 
 export type TCrudDetails<T extends z.ZodObject> = {
   router: TRouter & {
@@ -47,20 +55,33 @@ export type TCrudOptions<T extends z.ZodObject, D = z.output<T>> = {
   projection?: TCrudProjection<D> | Array<TCrudProjection<D>>;
   isolationFields?: TCrudIsolation<D>;
   hooks?: {
-    beforeCreate?: (
-      data: D & { _id?: ObjectId },
+    beforeCreate?: (opts: {
+      data: D & { _id?: ObjectId };
+      session?: ClientSession;
+    }, req: Request) => D | void | Promise<D | void>;
+    afterCreate?: (
+      opts: { data: WithId<D>; session?: ClientSession },
       req: Request,
-    ) => D | void | Promise<D | void>;
-    afterCreate?: (data: WithId<D>, req: Request) => void | Promise<void>;
+    ) => void | Promise<void>;
     beforeUpdate?: (
-      _id: ObjectId,
-      data: Partial<D>,
+      opts: { _id: ObjectId; data: Partial<D>; session?: ClientSession },
       req: Request,
     ) => Partial<D> | void | Promise<Partial<D> | void>;
     afterUpdate?: (
-      _id: ObjectId,
-      results: UpdateResult<Partial<D>>,
-      data: Partial<D>,
+      opts: {
+        _id: ObjectId;
+        results: UpdateResult<Partial<D>>;
+        data: Partial<D>;
+        session?: ClientSession;
+      },
+      req: Request,
+    ) => void | Promise<void>;
+    beforeDel?: (
+      opts: { _id: ObjectId; session?: ClientSession },
+      req: Request,
+    ) => void | Promise<void>;
+    afterDel?: (
+      opts: { _id: ObjectId; results: DeleteResult; session?: ClientSession },
       req: Request,
     ) => void | Promise<void>;
   };
@@ -132,14 +153,29 @@ export const createCRUD = <T extends z.ZodObject>(
             ...(await opts?.isolationFields?.(req, "create")),
           }) as any;
 
-          const { insertedId } = await details.model.insertOne(
-            (await opts?.hooks?.beforeCreate?.(
-              data,
+          const exec = async (session?: ClientSession) => {
+            const dataToInsert = (await opts?.hooks?.beforeCreate?.(
+              { data, session },
               req,
-            )) ?? data,
-          );
+            )) ?? data;
 
-          await opts?.hooks?.afterCreate?.({ _id: insertedId, ...data }, req);
+            const { insertedId } = await details.model.insertOne(
+              dataToInsert,
+              { session },
+            );
+
+            await opts?.hooks?.afterCreate?.({
+              data: { _id: insertedId, ...data },
+              session,
+            }, req);
+
+            return { insertedId };
+          };
+
+          const { insertedId } =
+            (opts?.hooks?.beforeCreate || opts?.hooks?.afterCreate)
+              ? await mongodb.withSession((_) => _.withTransaction(exec))
+              : await exec();
 
           return Response.json({
             _id: insertedId.toString(),
@@ -247,25 +283,42 @@ export const createCRUD = <T extends z.ZodObject>(
           const body = $body.parse(await bodyAsJson(req));
 
           const _id = new ObjectId(params.id);
-          const $set: any =
-            await opts?.hooks?.beforeUpdate?.(_id, body as any, req) ??
-              body;
 
-          const results = await details.model.updateOne(
-            {
+          const exec = async (session?: ClientSession) => {
+            const $set: any = await opts?.hooks?.beforeUpdate?.({
               _id,
-              ...(await opts?.isolationFields?.(req, "update")),
-            } as any,
-            {
-              $set,
-            },
-          );
+              data: body as any,
+              session,
+            }, req) ?? body;
 
-          if (opts?.hooks?.afterUpdate) {
-            await opts.hooks.afterUpdate(_id, results, $set, req);
-          } else if (!results.modifiedCount) {
-            throw new Error("No record updated!");
-          }
+            const results = await details.model.updateOne(
+              {
+                _id,
+                ...(await opts?.isolationFields?.(req, "update")),
+              } as any,
+              {
+                $set,
+              },
+              {
+                session,
+              },
+            );
+
+            if (opts?.hooks?.afterUpdate) {
+              await opts.hooks.afterUpdate({
+                _id,
+                results,
+                data: $set,
+                session,
+              }, req);
+            } else if (!results.modifiedCount) {
+              throw new Error("No record updated!");
+            }
+          };
+
+          (opts?.hooks?.beforeUpdate || opts?.hooks?.afterUpdate)
+            ? await mongodb.withSession((_) => _.withTransaction(exec))
+            : await exec();
 
           return Response.ok();
         },
@@ -282,12 +335,30 @@ export const createCRUD = <T extends z.ZodObject>(
         handler: async (req: Request) => {
           const params = $params.parse(paramsAsJson(req));
 
-          const { deletedCount } = await details.model.deleteOne({
-            _id: new ObjectId(params.id),
-            ...(await opts?.isolationFields?.(req, "del")),
-          } as any);
+          const _id = new ObjectId(params.id);
 
-          if (!deletedCount) throw new Error("No record deleted!");
+          const exec = async (session?: ClientSession) => {
+            await opts?.hooks?.beforeDel?.({ _id, session }, req);
+
+            const results = await details.model.deleteOne({
+              _id,
+              ...(await opts?.isolationFields?.(req, "del")),
+            } as any);
+
+            if (opts?.hooks?.afterDel) {
+              await opts.hooks.afterDel({
+                _id,
+                results,
+                session,
+              }, req);
+            } else if (!results.deletedCount) {
+              throw new Error("No record deleted!");
+            }
+          };
+
+          (opts?.hooks?.beforeDel || opts?.hooks?.afterDel)
+            ? await mongodb.withSession((_) => _.withTransaction(exec))
+            : await exec();
 
           return Response.ok();
         },
