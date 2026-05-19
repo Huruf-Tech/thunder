@@ -291,6 +291,8 @@ export const createCRUD = <T extends z.ZodObject>(
               session,
             }, req) ?? body;
 
+            $set.updatedAt = "$$NOW";
+
             const results = await details.model.updateOne(
               {
                 _id,
