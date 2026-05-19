@@ -3,3 +3,4 @@ set -e
 
 echo "[pre-commit] Running Deno checks..."
 deno run -A core/scripts/lintStaged.ts
+git add .
