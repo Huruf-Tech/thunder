@@ -314,7 +314,7 @@ export const createCRUD = <T extends z.ZodObject>(
                 session,
               }, req);
             } else if (!results.modifiedCount) {
-              throw new Error("No record updated!");
+              throw new Error("No record updated!", { cause: results });
             }
           };
 
@@ -345,7 +345,7 @@ export const createCRUD = <T extends z.ZodObject>(
             const results = await details.model.deleteOne({
               _id,
               ...(await opts?.isolationFields?.(req, "del")),
-            } as any);
+            } as any, { session });
 
             if (opts?.hooks?.afterDel) {
               await opts.hooks.afterDel({
@@ -354,7 +354,7 @@ export const createCRUD = <T extends z.ZodObject>(
                 session,
               }, req);
             } else if (!results.deletedCount) {
-              throw new Error("No record deleted!");
+              throw new Error("No record deleted!", { cause: results });
             }
           };
 
