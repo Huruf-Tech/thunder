@@ -1,0 +1,592 @@
+# Thunder Framework - AI Agent Instructions
+
+Thunder is a Deno-based full-stack web framework with file-based routing, hooks system, and MongoDB integration.
+
+## Project Structure
+
+```
+thunder/
+├── routes/           # Route handlers (file-based routing)
+│   ├── index.ts      # Fallback router (handles /)
+│   └── {name}.ts     # Route modules (e.g., home.ts → /home/*)
+├── hooks/            # Pre/post request hooks
+├── plugins/          # External plugins (Just a sub thunder project)
+│   └── {org}/{name}/ # Plugin with its own routes/hooks
+├── public/           # Static assets
+│   └── www/          # Default web root
+├── core/             # Framework internals (DO NOT MODIFY)
+├── schemas/          # Database schemas/models
+├── serve.ts          # Server entry point
+├── serve.base.ts     # Request handler setup (DO NOT MODIFY)
+└── database.ts       # Database connection
+```
+
+## VS Code Snippets
+
+Thunder provides VS Code snippets for faster development:
+- `router` - Scaffolds a new router file
+- `req` - Scaffolds a route handler with validation
+
+## Creating Routes
+
+Routes are defined in `routes/` directory. Each file exports a Router instance.
+
+**File-based Routing:** The filename becomes the route prefix. `routes/posts.ts` handles `/posts/*` endpoints.
+
+### Basic Router Pattern
+
+```typescript
+# /routes/foo.ts
+import { Router } from "@/core/http/router.ts";
+
+export default new Router("/api", function routerName(router) {
+  // GET /foo/api
+  router.get("/", function handlerName() {
+    return () => Response.json({ message: "Hello" });
+  });
+
+  // GET /foo/api/users/:id
+  router.get("/users/:id", function getUser() {
+    return (req) => {
+      // Handler logic
+      return Response.json({ id: "123" });
+    };
+  });
+}).group("GroupName");
+```
+
+### CRITICAL RULES FOR ROUTES
+
+1. **Named Functions Required**: Both the router function and handler functions MUST be named functions (not arrow functions):
+   ```typescript
+   // ✅ CORRECT
+   new Router("/api/", function users(router) { ... })
+   router.get("/", function listUsers() { ... })
+   
+   // ❌ WRONG - will throw error
+   new Router("/api/", (router) => { ... })
+   router.get("/", () => { ... })
+   ```
+
+2. **Handler names must be unique** within a router - no duplicate function names.
+
+3. **Prepare Pattern**: Route handlers use a "prepare" pattern - the outer function is called once at registration, the inner function handles requests.
+
+4. **Shape Function**: The `shape()` function registers validators with the framework. This is used for:
+   - Runtime validation of requests
+   - OpenAPI specification generation (`deno task generate:openapi`)
+   - TypeScript SDK generation (`deno task generate:sdk`)
+
+Example of the prepare pattern:
+   ```typescript
+   router.get("/users", function listUsers() {
+     // This code runs ONCE at registration (prepare phase)
+     const schema = z.object({ limit: z.number() });
+     
+     // This function handles each request
+     return (req) => {
+       // Request handling logic
+       return Response.json({ users: [] });
+     };
+   });
+   ```
+
+### Router with Validation (Shapes)
+
+```typescript
+import { Router } from "@/core/http/router.ts";
+import { paramsAsJson, queryAsJson, bodyAsJson } from "@/core/http/utils.ts";
+import z from "zod";
+
+export default new Router("/api/", function users(router) {
+  router.post("/users", function createUser() {
+    const $body = z.object({
+      name: z.string().min(1),
+      email: z.string().email(),
+    });
+
+    const $return = z.object({
+      id: z.string(),
+      name: z.string(),
+    });
+
+    return {
+      shape: () => ({
+        body: $body,
+        return: $return,
+      }),
+      handler: async (req) => {
+        const body = $body.parse(await bodyAsJson(req));
+        
+        // Create user logic...
+        
+        // Use `satisfies` for compile-time type checking against $return
+        return Response.json({ id: "123", name: body.name } satisfies z.output<typeof $return>);
+      },
+    };
+  });
+
+  router.get("/users/:id", function getUser() {
+    const $params = z.object({
+      id: z.string(),
+    });
+
+    return {
+      shape: () => ({ params: $params }),
+      handler: (req) => {
+        const { id } = $params.parse(paramsAsJson(req));
+        return Response.json({ id });
+      },
+    };
+  });
+}).group("Users");
+```
+
+### Available HTTP Methods
+
+- `router.get(path, handler)` - GET requests
+- `router.post(path, handler)` - POST requests  
+- `router.put(path, handler)` - PUT requests
+- `router.patch(path, handler)` - PATCH requests
+- `router.del(path, handler)` - DELETE requests (note: `del` not `delete`)
+- `router.all(path, handler)` - All methods
+
+### Path Parameters
+
+Use `path-to-regexp` syntax:
+- `:id` - Named parameter
+- `:id?` - Optional parameter
+- `{/*path}` - Wildcard (captures rest of path as array)
+- `{/:id}` - Optional segment
+
+```typescript
+router.get("/users/:userId/posts/:postId", function getPost() { ... });
+router.get("/files{/*filepath}", function serveFile() { ... });
+router.get("/items{/:id}", function getItems() { ... }); // id is optional
+```
+
+## Request Utilities
+
+```typescript
+import { 
+  paramsAsJson,   // Get URL params as object
+  queryAsJson,    // Get query string as object
+  bodyAsJson,     // Parse body (JSON or form-urlencoded)
+  parseBasicAuth, // Parse Basic auth header
+  serveAssets,    // Serve static files
+} from "@/core/http/utils.ts";
+
+// Usage
+const params = paramsAsJson<{ id: string }>(req);
+const query = queryAsJson(req);
+const body = await bodyAsJson(req);
+const auth = parseBasicAuth(req); // { username, password } | null
+```
+
+## Response Helpers
+
+```typescript
+import { Response } from "@/core/http/response.ts";
+
+Response.ok();                    // 200 OK
+Response.ok("Success");           // 200 with body
+Response.json({ data: "value" }); // JSON response (standard)
+Response.created({ id: "123" });  // 201 Created
+Response.badRequest();            // 400 Bad Request
+Response.unauthorized();          // 401 Unauthorized
+Response.forbidden();             // 403 Forbidden
+Response.notFound();              // 404 Not Found
+Response.redirect("/path");       // 302 Redirect
+```
+
+## Hooks System
+
+Hooks intercept requests before/after handlers. Create files in `hooks/` directory.
+
+### Hook Priority
+
+Priority controls execution order. **Higher numbers run first:**
+
+| Priority | Execution Order | Use Case |
+|----------|-----------------|----------|
+| 100      | First           | Security/auth checks |
+| 3, 2...  | Ascending       | Validation, rate limiting |
+| 1        | Last            | Logging, cleanup |
+
+### Hook Structure
+
+```typescript
+// hooks/auth.ts
+import type { THook } from "@/core/http/hooks.ts";
+
+export default {
+  priority: 100, // Higher = runs first (optional)
+  
+  pre: async ({ req, scope, name }) => {
+    // Runs BEFORE handler
+    // scope = router name, name = handler name
+    
+    const token = req.headers.get("Authorization");
+    if (!token) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+    
+    // Return Response to short-circuit, or void to continue
+  },
+  
+  post: async ({ req, res, scope, name }) => {
+    // Runs AFTER handler
+    // Can modify or replace response
+    
+    // Return Response to override, or void to keep original
+  },
+} satisfies THook;
+```
+
+### Logging Hook Example
+
+```typescript
+// hooks/logger.ts
+
+import type { THook } from "@/core/http/hooks.ts";
+import { Logger } from "@/core/utils/logger.ts";
+
+export default {
+  priority: -100, // Lower number = runs last (after all other hooks)
+  post: async ({ req, res, name }) => {
+    Logger.info(`[${req.method}] ${req.url} → ${res.status} (${name})`);
+  },
+} satisfies THook;
+```
+
+## Environment Variables
+
+```typescript
+import { Env, EnvType } from "@/core/utils/env.ts";
+
+// Check environment
+if (Env.is(EnvType.DEVELOPMENT)) { ... }
+if (Env.is(EnvType.PRODUCTION)) { ... }
+
+// Get variables (async - with fallback support)
+const dbUrl = await Env.get("DATABASE_URL");
+const debug = await Env.enabled("DEBUG"); // boolean
+const port = await Env.number("PORT");     // number
+const hosts = await Env.list("ALLOWED_HOSTS"); // string[]
+
+// Sync versions (no fallback)
+const dbUrl = Env.getSync("DATABASE_URL");
+const debug = Env.enabledSync("DEBUG");
+
+// Silent mode (returns undefined instead of throwing)
+const optional = await Env.get("OPTIONAL_VAR", true);
+```
+
+Environment files: `.env`, `.env.development`, `.env.production`, `.env.test`
+
+## Create a (Mongodb based) Schema/Model
+ 
+Create a user model
+
+```typescript
+// schemas/user.ts
+
+import z from "zod";
+import { mongodb } from "@/database.ts";
+
+const $userInput = z.object({
+  name: z.string(),
+  email: z.string().email(),
+});
+
+const $user = $userInput.extend({
+  _id: $objectId.optional(),
+  createdAt: z.date().default(() => new Date()),
+});
+
+export const userModel = mongodb.db().collection<
+  z.infer<typeof $user>
+>("users");
+
+```
+
+Basic schema/model usage
+
+```typescript
+import { mongodb } from "@/database.ts";
+import { userModel, $user } from "@/schemas/user.ts";
+
+// Basic operations
+await userModel.insertOne(
+  $user.strictParse({ name: "John", email: "john@mail.com" }) // Validate before insert (This is a better practice and also auto inserts the default values instead of hard-coding) (You can also use regular zod .parse method but .strictParse is our type safe custom implementation that forces the input shape when typing manullay)
+);
+await userModel.findOne({ _id: new ObjectId(id) });
+await userModel.updateOne({ _id }, { $set: { name: "Jane" } });
+await userModel.deleteOne({ _id });
+
+// With transactions
+await mongodb.withSession(session => 
+  session.withTransaction(async () => {
+    await userModel.insertOne({ ... }, { session });
+    await logs.insertOne({ ... }, { session });
+  })
+);
+```
+
+## CRUD Helper
+
+Quickly create REST endpoints:
+
+```typescript
+// routes/users.ts
+
+import { Router } from "@/core/http/router.ts";
+import { createCRUD, $objectId } from "@/core/utils/createCRUD.ts";
+import { userModel, $user, $userInput } from "@/schemas/user.ts";
+import z from "zod";
+
+export default new Router("/api", function users(router) {
+  createCRUD({
+    router,
+    schema: $user,
+    model: userModel,
+    insertSchema: $userInput,
+
+    // Optional: narrowed fields in case of update
+    updateSchema: $userInput.pick({ name: true }),
+  }, {
+    // Optional: disable specific endpoints
+    disable: { del: true },
+    
+    // Optional: field isolation (multi-tenancy or ownership isolation)
+    isolationFields: async (req, action) => ({
+      orgId: req.headers.get("X-Org-Id"),
+    }),
+    
+    // Optional: lifecycle hooks
+    hooks: {
+      beforeCreate: ({ data }) => ({ ...data, createdBy: "system" }),
+      afterCreate: ({ data }) => console.log("Created:", data._id),
+    },
+  });
+}).group("Users"); // Optinoal: allows you to group the endpoints for better openapi spec generation
+```
+
+Creates endpoints:
+- `POST /users/api` - Create
+- `GET /users/api` - List all
+- `GET /users/api/:id` - Get one
+- `GET /users/api/count` - Count
+- `PATCH /users/api/:id` - Update
+- `DELETE /users/api/:id` - Delete
+
+## Validation with Zod
+
+Always use Zod for input validation:
+
+```typescript
+import z from "zod";
+
+// Define schemas outside handler (in prepare phase)
+const $input = z.object({
+  name: z.string().min(1).max(100),
+  age: z.coerce.number().int().min(0), // coerce for query params
+  email: z.string().email().optional(),
+  tags: z.array(z.string()).default([]),
+});
+
+// Parse and validate
+const data = $input.parse(await bodyAsJson(req));
+
+// For query params (always strings), use coerce
+const $query = z.object({
+  page: z.coerce.number().default(1),
+  limit: z.coerce.number().max(100).default(20),
+});
+```
+
+## Logging
+
+```typescript
+import { Logger } from "@/core/utils/logger.ts";
+
+Logger.info("Processing request...");
+Logger.success("Operation completed");
+Logger.warn("Rate limit approaching");
+Logger.error("Failed to connect", error);
+```
+
+Note: Only errors log in production mode.
+
+## Caching
+
+```typescript
+import { cache } from "@/core/utils/cache.ts";
+
+// Cache function results with TTL (milliseconds)
+const getUser = cache(async (id: string) => {
+  return await db.users.findOne({ _id: id });
+}, 60_000); // 1 minute TTL
+
+// Use Infinity for permanent cache
+const getConfig = cache(async () => {
+  return await loadConfig();
+}, Infinity);
+```
+
+## Static File Serving
+
+```typescript
+import { paramsAsJson, serveAssets } from "@/core/http/utils.ts";
+import { fromFileUrl } from "@std/path/from-file-url";
+
+router.get("{/*path}", function staticFiles() {
+  return (req) => serveAssets(
+    req,
+    fromFileUrl(import.meta.resolve("../public/www")),
+    paramsAsJson<{ path?: string[] }>(req).path?.join("/"),
+  );
+});
+```
+
+## Import Conventions
+
+Always use the `@/` alias for project imports:
+
+```typescript
+// ✅ CORRECT
+import { Router } from "@/core/http/router.ts";
+import { Env } from "@/core/utils/env.ts";
+import { mongodb } from "@/database.ts";
+
+// ❌ WRONG - relative imports for core/database
+import { Router } from "../../core/http/router.ts";
+import { mongodb } from "../database.ts";
+```
+
+## Code Style Guidelines
+
+1. **TypeScript strict mode** - All code must be properly typed
+2. **Named exports** for utilities, **default export** for routers/hooks
+3. **Async/await** preferred over Promise chains
+4. **Zod schemas** defined in prepare phase (outside request handler)
+5. **No comments explaining obvious code** - code should be self-documenting
+6. **Use Response helpers** from `@/core/http/response.ts`
+7. **Validate all inputs** with Zod before processing
+
+## Error Handling
+
+Errors are automatically caught and formatted:
+- `ZodError` → 400 with validation details
+- `Response` thrown → returned as-is
+- `Error` → 500 with message (stack only in development)
+
+```typescript
+// Throw Response for custom error responses
+if (!authorized) {
+  throw Response.forbidden("Access denied");
+}
+
+// Regular errors become 500
+throw new Error("Something went wrong");
+```
+
+## Plugin System
+
+Plugins are sub thunder projects in `plugins/{org}/{name}/` with their own routes/hooks.
+
+```bash
+# Add plugin (Pulls from github for now)
+deno task add:plugin -n org/plugin-name
+
+# Update plugin
+deno task update:plugin -n org/plugin-name
+
+# Remove plugin  
+deno task remove:plugin -n org/plugin-name
+```
+
+Plugin routes are auto-discovered and merged with main app routes.
+
+## Available Tasks
+
+```bash
+deno task dev              # Development server with hot reload
+deno task start            # Production server
+deno task check            # Format and lint
+deno task generate:openapi # Generate OpenAPI spec
+deno task generate:sdk     # Generate TypeScript SDK
+deno task generate:app     # Generate a dashboard app in public folder (based on the boilerplate repo: github.com/Huruf-Tech/thunder-ui)
+```
+
+## Common Patterns
+
+### Authentication Middleware via Hook
+
+```typescript
+// hooks/auth.ts
+
+import type { THook } from "@/core/http/hooks.ts";
+
+export default {
+  priority: 100,
+  pre: async ({ req }) => {
+    const token = req.headers.get("Authorization")?.replace("Bearer ", "");
+    if (!token) return Response.unauthorized();
+    
+    try {
+      const user = await verifyToken(token);
+      // Store user in header for handlers to access
+      req.headers.set("X-User-Id", user.id);
+    } catch {
+      return Response.unauthorized();
+    }
+  },
+} satisfies THook;
+```
+
+### Pagination
+
+```typescript
+router.get("/items", function listItems() {
+  const $query = z.object({
+    offset: z.coerce.number().min(0).default(0),
+    limit: z.coerce.number().min(1).max(2000).default(100),
+  });
+
+  return {
+    shape: () => ({ query: $query }),
+    handler: async (req) => {
+      const { offset, limit } = $query.parse(queryAsJson(req));
+      
+      const [results, count] = await Promise.all([
+        collection.find().skip(offset).limit(limit).toArray(),
+        collection.countDocuments(),
+      ]);
+      
+      return Response.json({
+        results,
+        count,
+      });
+    },
+  };
+});
+```
+
+### File Upload
+
+```typescript
+router.post("/upload", function uploadFile() {
+  return async (req) => {
+    const formData = await req.formData();
+    const file = formData.get("file") as File;
+    
+    if (!file) return Response.badRequest("No file provided");
+    
+    const bytes = await file.arrayBuffer();
+    await Deno.writeFile(`./uploads/${file.name}`, new Uint8Array(bytes));
+    
+    return Response.json({ filename: file.name });
+  };
+});
+```
