@@ -318,7 +318,7 @@ import { userModel, $user } from "@/schemas/user.ts";
 
 // Basic operations
 await userModel.insertOne(
-  $user.strictParse({ name: "John", email: "john@mail.com" }) // Validate before insert (This is a better practice and also auto inserts the default values instead of hard-coding) (You can also use regular zod .parse method but .strictParse is our type safe custom implementation that forces the input shape when typing manullay)
+  $user.strictParse({ name: "John", email: "john@mail.com" }) // Validate before insert (This is a better practice and also auto inserts the default values instead of hard-coding) (You can also use regular zod .parse method but .strictParse is our type safe custom implementation that forces the input shape when typing manually)
 );
 await userModel.findOne({ _id: new ObjectId(id) });
 await userModel.updateOne({ _id }, { $set: { name: "Jane" } });
@@ -369,7 +369,7 @@ export default new Router("/api", function users(router) {
       afterCreate: ({ data }) => console.log("Created:", data._id),
     },
   });
-}).group("Users"); // Optinoal: allows you to group the endpoints for better openapi spec generation
+}).group("Users"); // Optional: allows you to group the endpoints for better openapi spec generation
 ```
 
 Creates endpoints:
