@@ -210,7 +210,7 @@ Priority controls execution order. **Higher numbers run first:**
 | Priority | Execution Order | Use Case |
 |----------|-----------------|----------|
 | 100      | First           | Security/auth checks |
-| 3, 2...  | Ascending       | Validation, rate limiting |
+| 3, 2...  | Descending      | Validation, rate limiting |
 | 1        | Last            | Logging, cleanup |
 
 ### Hook Structure
