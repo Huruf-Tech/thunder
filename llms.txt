@@ -14,18 +14,45 @@ Thunder is a Deno-based full-stack web framework with file-based routing, hooks 
 thunder/
 ├── routes/           # Route handlers (file-based routing)
 │   ├── index.ts      # Fallback router (handles /)
-│   └── {name}.ts     # Route modules (e.g., home.ts → /home/*)
-├── hooks/            # Pre/post request hooks
-├── plugins/          # External plugins (Just a sub thunder project)
+│   ├── {name}.ts     # Route modules (e.g., users.ts → /users/*)
+│   └── admin/        # Subfolders are ignored (not included in routing)
+├── hooks/            # Pre/post request hooks (interceptors)
+├── plugins/          # External plugins (Thunder projects installed as plugins)
 │   └── {org}/{name}/ # Plugin with its own routes/hooks
+├── schemas/          # MongoDB collection schemas with Zod validation
+├── scripts/          # One-time setup scripts (database indexes, migrations, etc.)
+│   └── createIndexes.ts
+├── workers/          # (Optional) Background workers for separate deployment
+│   └── emailWorker.ts
 ├── public/           # Static assets
 │   └── www/          # Default web root
 ├── core/             # Framework internals (DO NOT MODIFY)
-├── schemas/          # Database schemas/models
 ├── serve.ts          # Server entry point
 ├── serve.base.ts     # Request handler setup (DO NOT MODIFY)
-└── database.ts       # Database connection
+├── database.ts       # MongoDB connection instance
+├── .env              # Environment variables (Database URL, secrets, etc.)
+└── deno.json         # Project configuration
 ```
+
+### Important Routing Rules
+
+- **Files in `routes/` directory** → Converted to routes
+  - `routes/users.ts` → handles `/users/*`
+  - `routes/posts.ts` → handles `/posts/*`
+  - `routes/index.ts` → handles `/` (fallback)
+
+- **Subfolders in `routes/` are ignored** by the framework
+  - `routes/admin/users.ts` is **not** registered (subfolders are skipped)
+  - Only top-level `.ts` files in `routes/` are discovered
+  - Use this for code organization, not routing
+
+### Serverless-First Architecture
+
+Thunder is designed for **serverless environments**:
+- **No background jobs** - Serverless doesn't support long-running processes
+- **Fast cold starts** - Database indexes created via scripts, not on app startup
+- **Stateless** - Each request is independent
+- **Workers for async tasks** - Deploy to separate stateful server if needed
 
 ## VS Code Snippets
 
@@ -267,12 +294,54 @@ export default {
 } satisfies THook;
 ```
 
-## Environment Variables
+## Project Setup
+
+### Quick Start
+
+```bash
+# 1. Clone Thunder framework (or create new project)
+git clone https://github.com/Huruf-Tech/thunder.git my-app
+cd my-app
+
+# 2. Create .env file with database connection
+echo "DATABASE_URL=mongodb://localhost:27017/my-db" > .env
+
+# 3. (Recommended) Install thunder-core plugin for auth, CORS, security, etc.
+deno task add:plugin -n Huruf-Tech/thunder-core
+
+# 4. Start development server with hot reload
+deno task dev
+
+# Server runs on http://localhost:8000
+```
+
+### Environment Variables
+
+Create `.env` file with required variables:
+
+```bash
+# Database connection (required)
+DATABASE_URL=mongodb://username:password@localhost:27017/my-db
+
+# Environment type
+ENV_TYPE=development
+
+# Plugin-specific variables
+# (Each plugin documents its required vars - errors will tell you which ones)
+```
+
+Env files supported:
+- `.env` - Default (always loaded)
+- `.env.development` - Loaded in development
+- `.env.production` - Loaded in production
+- `.env.test` - Loaded in test
+
+### Accessing Environment Variables in Code
 
 ```typescript
 import { Env, EnvType } from "@/core/utils/env.ts";
 
-// Check environment
+// Check current environment
 if (Env.is(EnvType.DEVELOPMENT)) { ... }
 if (Env.is(EnvType.PRODUCTION)) { ... }
 
@@ -290,7 +359,44 @@ const debug = Env.enabledSync("DEBUG");
 const optional = await Env.get("OPTIONAL_VAR", true);
 ```
 
-Environment files: `.env`, `.env.development`, `.env.production`, `.env.test`
+## Database Indexes (Serverless Optimization)
+
+Thunder is designed for **serverless-first deployment**. To optimize cold starts, database indexes are not created automatically at startup.
+
+### Creating Database Indexes
+
+Create scripts in the `scripts/` folder and run them manually during development:
+
+```typescript
+// scripts/createIndexes.ts
+
+import { mongodb } from "@/database.ts";
+import { userModel } from "@/schemas/user.ts";
+
+async function createIndexes() {
+  // Create indexes for users collection
+  await userModel.createIndex({ email: 1 }, { unique: true });
+  await userModel.createIndex({ createdAt: -1 });
+  
+  console.log("✓ Indexes created successfully");
+}
+
+await createIndexes();
+```
+
+Run during development:
+```bash
+deno run -A scripts/createIndexes.ts
+```
+
+### Why Manual Indexes?
+
+- **Cold start optimization** - Indexes aren't created on every app startup
+- **Serverless efficiency** - Reduces initialization time in serverless environments
+- **Predictable performance** - Indexes created once, not repeatedly
+- **Better developer experience** - No hidden database operations
+
+---
 
 ## Create a (Mongodb based) Schema/Model
  
@@ -462,6 +568,146 @@ const getConfig = cache(async () => {
 }, Infinity);
 ```
 
+## Background Jobs (Async Tasks)
+
+⚠️ **Note**: Background jobs are **not supported** in Thunder because it's designed for **serverless-first deployment**.
+
+### Option 1: Separate Worker Server (Recommended for Async Tasks)
+
+Create a separate worker application deployed to stateful hosting:
+
+```typescript
+// workers/emailWorker.ts - Run on separate server
+
+import { mongodb } from "@/database.ts";
+import { emailQueueModel } from "@/schemas/emailQueue.ts";
+
+async function processEmailQueue() {
+  while (true) {
+    // Fetch pending emails
+    const email = await emailQueueModel.findOne({ status: "pending" });
+    
+    if (!email) {
+      await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5s
+      continue;
+    }
+    
+    try {
+      // Send email (via service like Sendgrid)
+      await sendEmail(email);
+      
+      // Mark as sent
+      await emailQueueModel.updateOne(
+        { _id: email._id },
+        { $set: { status: "sent", sentAt: new Date() } }
+      );
+    } catch (error) {
+      // Mark as failed
+      await emailQueueModel.updateOne(
+        { _id: email._id },
+        { $set: { status: "failed", error: error.message } }
+      );
+    }
+  }
+}
+
+// Start worker
+await processEmailQueue();
+```
+
+Deploy to:
+- Dedicated server (e.g., VPS, Docker)
+- Job platform (e.g., Railway, Heroku)
+- Kubernetes cluster
+
+### Option 2: Third-Party Queue Service (Simplest)
+
+Use managed job queue services like **BullMQ**:
+
+```typescript
+// routes/emails.ts - Enqueue job from Thunder app
+
+import Queue from "bullmq";
+
+const emailQueue = new Queue("emails", {
+  connection: {
+    host: process.env.REDIS_HOST,
+    port: process.env.REDIS_PORT,
+  },
+});
+
+export default new Router("/api", function email(router) {
+  router.post("/send", function sendEmail() {
+    const $body = z.object({
+      to: z.string().email(),
+      subject: z.string(),
+      body: z.string(),
+    });
+
+    return {
+      shape: () => ({ body: $body }),
+      handler: async (req) => {
+        const data = $body.parse(await bodyAsJson(req));
+        
+        // Add to queue (returns immediately)
+        await emailQueue.add("send", data, {
+          attempts: 3,
+          backoff: { type: "exponential", delay: 2000 },
+        });
+        
+        return Response.ok();
+      },
+    };
+  });
+});
+```
+
+Then run worker separately:
+```typescript
+// workers/emailWorker.ts
+
+import Queue from "bullmq";
+
+const emailQueue = new Queue("emails", {
+  connection: { host: process.env.REDIS_HOST }
+});
+
+emailQueue.process(async (job) => {
+  await sendEmail(job.data);
+});
+```
+
+### Option 3: Queue in Database
+
+Simple alternative using MongoDB as a queue:
+
+```typescript
+// In route handler - Enqueue
+await emailQueueModel.insertOne(
+  $emailQueue.strictParse({
+    type: "send-email",
+    data: { to, subject, body },
+    status: "pending",
+    createdAt: new Date(),
+  })
+);
+
+// In separate worker - Process
+// (Similar to Option 1 example above)
+```
+
+### Why Not Built-in Background Jobs?
+
+Thunder is **serverless-first**, which means:
+- ❌ No persistent connections between requests
+- ❌ No long-running background processes
+- ❌ Functions scale independently
+- ✅ Each request is stateless and isolated
+
+For async tasks, use external services instead of built-in job queues.
+
+---
+
 ## Static File Serving
 
 ```typescript
@@ -521,20 +767,248 @@ throw new Error("Something went wrong");
 
 ## Plugin System
 
-Plugins are sub thunder projects in `plugins/{org}/{name}/` with their own routes/hooks.
+Thunder uses a **unified project-plugin architecture**: A Thunder project IS a Thunder plugin. No special structure needed.
+
+### How It Works
+
+1. **Create a Thunder project** normally
+2. **Publish to GitHub**
+3. **Install as a plugin** into other Thunder projects
+
+Plugins are discovered in `plugins/{org}/{name}/` and routes/hooks are automatically merged with the main app.
 
 ```bash
-# Add plugin (Pulls from github for now)
+# Add plugin from GitHub
 deno task add:plugin -n org/plugin-name
 
-# Update plugin
+# Update plugin to latest
 deno task update:plugin -n org/plugin-name
 
-# Remove plugin  
+# Remove plugin
 deno task remove:plugin -n org/plugin-name
 ```
 
-Plugin routes are auto-discovered and merged with main app routes.
+### Getting Started: Use thunder-core
+
+Thunder ships as a **minimal framework**. To access essential features (auth, CORS, security, RBAC, admin user management), install the official core plugin:
+
+```bash
+deno task add:plugin -n Huruf-Tech/thunder-core
+```
+
+**thunder-core** provides:
+- Authentication (via [better-auth](https://www.better-auth.com/))
+- Role-based access control (RBAC)
+- Security headers & CORS
+- User management admin panel
+- Session management
+- Built-in database migrations
+- Common utilities (withAuthSession, withTenant, withAuthGuard, etc.)
+
+### Project Setup Workflow
+
+```bash
+# 1. Clone Thunder framework repository
+git clone https://github.com/Huruf-Tech/thunder.git my-project
+cd my-project
+
+# 2. Add .env file with database connection
+echo "DATABASE_URL=mongodb://localhost:27017/my-db" > .env
+
+# 3. Install core plugin (recommended for most projects)
+deno task add:plugin -n Huruf-Tech/thunder-core
+
+# 4. Handle any missing env variables
+# Run: deno task dev
+# Fix any errors by setting required env vars in .env
+# (Plugin docs should mention required variables)
+
+# 5. Start coding
+deno task dev
+```
+
+### Plugin Development Guide
+
+Creating a reusable plugin is simple—it's just a Thunder project published to GitHub.
+
+#### Plugin Naming Convention
+
+Use the naming pattern `thunder-plugin-{feature}`:
+- `thunder-plugin-stripe` - Payment processing
+- `thunder-plugin-email-sendgrid` - Email service
+- `thunder-plugin-analytics` - Analytics
+- `thunder-plugin-sms-twilio` - SMS service
+
+#### Plugin Structure
+
+A plugin is identical to any Thunder project:
+
+```
+thunder-plugin-feature/
+├── routes/
+│   └── feature.ts        # Routes use semantic namespace
+├── hooks/
+│   └── middleware.ts     # If needed
+├── schemas/
+│   └── model.ts          # Database models
+├── lib/
+│   └── utilities.ts      # Helper functions
+├── types/
+│   └── plugin.ts         # Export types for consumers
+├── serve.ts              # Entry point
+├── database.ts           # DB connection
+├── deno.json             # Project config
+├── .env.example          # Template for required env vars
+├── README.md             # Plugin documentation
+├── llms.txt              # The file you're reading right now (with probably extra plugin instructions)
+└── PLUGIN_GUIDE.md       # (Optional) Plugin usage guide
+```
+
+#### Plugin Development Best Practices
+
+**1. Use Semantic Route Namespaces**
+
+Routes should be namespaced by feature:
+```typescript
+// routes/stripe.ts
+
+// ✅ GOOD - Clear namespace
+export default new Router("/api", function stripe(router) {
+  router.post("/checkout", function checkout() { ... });
+  router.get("/invoices", function listInvoices() { ... });
+});
+// Routes: /stripe/api/checkout, /stripe/api/invoices
+```
+
+**2. Document Environment Variables**
+
+Always provide `.env.example` with required variables:
+```bash
+# .env.example for thunder-plugin-stripe
+
+# Stripe API keys (from https://stripe.com)
+STRIPE_API_KEY=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+
+# Optional configuration
+STRIPE_LOG_LEVEL=debug
+```
+
+The plugin developer should document what each variable does in the README.
+
+**3. Document the Plugin in README**
+
+```markdown
+# Thunder Plugin: Stripe Integration
+
+## Installation
+deno task add:plugin -n myorg/thunder-plugin-stripe
+
+## Configuration
+Set these environment variables in `.env`:
+- STRIPE_API_KEY: Your Stripe API key
+- STRIPE_WEBHOOK_SECRET: Webhook signing secret
+
+## Usage
+
+Routes exposed:
+- POST /stripe/api/checkout - Create payment intent
+- GET /stripe/api/invoices - List invoices
+- POST /stripe/api/webhook - Receive Stripe events
+
+## Example
+See PLUGIN_GUIDE.md for detailed usage examples
+```
+
+**4. Hook Priority Convention**
+
+Plugins should follow hook priority guidelines:
+- **100+**: Authentication/security hooks (CORS, auth validation)
+- **50-99**: Business logic hooks (validation, enrichment)
+- **0-49**: Optional hooks
+- **-100**: Logging/cleanup hooks
+
+```typescript
+// hooks/stripe.ts
+export default {
+  priority: 50,  // Below auth (100+), before app logic
+  pre: async ({ req, name }) => {
+    // Validate Stripe webhooks, etc.
+  },
+} satisfies THook;
+```
+
+### Installing Multiple Plugins
+
+Compose multiple plugins in a single project:
+
+```bash
+deno task add:plugin -n Huruf-Tech/thunder-core
+deno task add:plugin -n myorg/thunder-plugin-stripe
+deno task add:plugin -n myorg/thunder-plugin-email-sendgrid
+```
+
+Routes and hooks from all plugins auto-merge:
+```
+/auth/* → from thunder-core
+/users/* → from thunder-core
+/stripe/* → from thunder-plugin-stripe
+/email/* → from thunder-plugin-email-sendgrid
+```
+
+### Important Plugin Limitations (Current)
+
+⚠️ **No Recursive Dependencies** - A plugin cannot depend on another plugin.
+- Plugin A can be installed alone ✅
+- Plugin A + Plugin B can be installed together ✅
+- Plugin A depending on Plugin B, then installing A ❌
+
+If your plugin needs features from another plugin, document it in README and assume the consumer installs both.
+
+### Plugin Best Practices
+
+1. **Make plugins composable** - Work independently or with other plugins
+2. **Use semantic routes** - Avoid generic names like `/api/*`
+3. **Document env vars** - List all required/optional variables
+4. **Export types** - Let consumers use TypeScript types from your plugin
+5. **Keep hooks focused** - One hook per concern
+6. **Test standalone** - Ensure plugin works without other plugins
+7. **Version properly** - Use semantic versioning (major.minor.patch)
+
+### Example: Creating a Simple Plugin
+
+Here's a minimal email plugin:
+
+```typescript
+// thunder-plugin-email/routes/email.ts
+import { Router } from "@/core/http/router.ts";
+import { bodyAsJson } from "@/core/http/utils.ts";
+import z from "zod";
+
+export default new Router("/email", function email(router) {
+  router.post("/send", function sendEmail() {
+    const $body = z.object({
+      to: z.string().email(),
+      subject: z.string(),
+      body: z.string(),
+    });
+
+    return {
+      shape: () => ({ body: $body }),
+      handler: async (req) => {
+        const data = $body.parse(await bodyAsJson(req));
+        // Send email via provider (Sendgrid, AWS SES, etc.)
+        return Response.json({ success: true, messageId: "msg_123" });
+      },
+    };
+  });
+});
+```
+
+Publish to GitHub and consumers can install with:
+```bash
+deno task add:plugin -n myorg/thunder-plugin-email
+```
 
 ## Available Tasks
 
@@ -564,6 +1038,7 @@ export default {
     
     try {
       const user = await verifyToken(token);
+      
       // Store user in header for handlers to access
       req.headers.set("X-User-Id", user.id);
     } catch {
