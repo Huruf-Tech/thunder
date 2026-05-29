@@ -2,6 +2,12 @@
 
 Thunder is a Deno-based full-stack web framework with file-based routing, hooks system, and MongoDB integration.
 
+## Upstream Context
+
+- [Deno llms.txt](https://docs.deno.com/llms.txt): Runtime, permissions, standard APIs, and deployment behavior.
+- [MongoDB Node Driver docs](https://www.mongodb.com/docs/drivers/node/current/): MongoDB driver behavior relevant to this project.
+- [Zod documentation](https://zod.dev/): Validation concepts used by this framework.
+
 ## Project Structure
 
 ```
@@ -26,6 +32,8 @@ thunder/
 Thunder provides VS Code snippets for faster development:
 - `router` - Scaffolds a new router file
 - `req` - Scaffolds a route handler with validation
+- `model` - Scaffolds a database schema/model
+- `crud` - Scaffolds a complete crud operation
 
 ## Creating Routes
 
