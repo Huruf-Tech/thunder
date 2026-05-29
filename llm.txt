@@ -359,9 +359,29 @@ export default new Router("/api", function users(router) {
     disable: { del: true },
     
     // Optional: field isolation (multi-tenancy or ownership isolation)
-    isolationFields: async (req, action) => ({
-      orgId: req.headers.get("X-Org-Id"),
-    }),
+    // Note: in case of post method (create operation) isolation field is inserted on the database for later isolation match.
+    isolationFields: async (req, action) => {
+
+      // Optional: In case of create action, if you want to pass more or less fields to the insert operation you can do the following
+      if(action === "create") {
+        return {
+          orgId: req.headers.get("X-Org-Id"),
+          userId: req.headers.get("X-User-Id"), // A userId may usually be accessed from the logged in session but for now we are using the headers for simplicity.
+        }
+      }
+
+      // Optional: Imagine you want to allow only the creator to be able to edit or delete the object
+      if(["update", "del"].includes(action)) {
+        return {
+          orgId: req.headers.get("X-Org-Id"),
+          userId: req.headers.get("X-User-Id"),
+        }
+      }
+
+      return {
+        orgId: req.headers.get("X-Org-Id"),
+      }
+    },
     
     // Optional: lifecycle hooks
     hooks: {
