@@ -784,12 +784,27 @@ Plugins are discovered in `plugins/{org}/{name}/` and routes/hooks are automatic
 # Add plugin from GitHub
 deno task add:plugin -n org/plugin-name
 
+# Add a plugin AND run its setup lifecycle script (indexes, seeding, migrations)
+deno task add:plugin -n org/plugin-name --setup                       # runs setup against the "production" env
+deno task add:plugin -n org/plugin-name --setup=development,production # run setup against specific envs
+
+# Run a plugin's setup lifecycle script separately (after install)
+deno task setup:plugin -n org/plugin-name                       # interactive env selection
+deno task setup:plugin -n org/plugin-name --envs=development    # non-interactive
+
 # Update plugin to latest
 deno task update:plugin -n org/plugin-name
 
-# Remove plugin
+# Remove plugin (optionally run its cleanup lifecycle script)
 deno task remove:plugin -n org/plugin-name
+deno task remove:plugin -n org/plugin-name --clean                    # also runs cleanup against the "production" env
+deno task remove:plugin -n org/plugin-name --clean=development,production
 ```
+
+> ⚠️ Installing a plugin only copies its files and merges its import map — it does **NOT**
+> run the plugin's setup script automatically. You must run setup explicitly (via
+> `--setup` during `add:plugin`, or `setup:plugin` afterwards) for the plugin to create
+> its database indexes, seed data, or run migrations. See "Plugin Lifecycle Scripts" below.
 
 ### Getting Started: Use thunder-core
 
@@ -856,6 +871,9 @@ thunder-plugin-feature/
 │   └── model.ts          # Database models
 ├── lib/
 │   └── utilities.ts      # Helper functions
+├── scripts/
+│   ├── setupPlugin.ts    # (Optional) Setup lifecycle: runs when consumer sets up the plugin
+│   └── cleanupPlugin.ts  # (Optional) Cleanup lifecycle: runs when consumer removes the plugin
 ├── types/
 │   └── plugin.ts         # Export types for consumers
 ├── serve.ts              # Entry point
@@ -866,6 +884,99 @@ thunder-plugin-feature/
 ├── llms.txt              # The file you're reading right now (with probably extra plugin instructions)
 └── PLUGIN_GUIDE.md       # (Optional) Plugin usage guide
 ```
+
+### Plugin Lifecycle Scripts (Setup & Cleanup)
+
+Because Thunder is **serverless-first**, plugins must **not** create database indexes,
+seed data, or run migrations at app startup (that would slow cold starts and run on every
+request/instance). Instead, plugins ship **lifecycle scripts** that the consumer runs
+explicitly, once, against a chosen environment.
+
+#### How lifecycle scripts work
+
+A plugin may include two optional files in its `scripts/` folder:
+
+- `scripts/setupPlugin.ts` — runs when the plugin is **set up** (`--setup` during install,
+  or `deno task setup:plugin`). Put index creation, seeding, and migrations here.
+- `scripts/cleanupPlugin.ts` — runs when the plugin is **removed with cleanup**
+  (`remove:plugin --clean`). Put teardown logic here (drop collections, remove seeded data,
+  etc.). Safe to omit entirely if not needed.
+
+When the consumer triggers setup/cleanup, Thunder executes the script **once per selected
+environment**, spawning `deno run -A <script>` with `ENV_TYPE` set to that environment.
+This is what lets the script connect to the correct database (development vs production)
+when creating indexes. If a plugin has no lifecycle script, setup/cleanup is a safe no-op.
+
+#### Writing a setup script (index creation example)
+
+Keep the actual work in importable functions and call them from the lifecycle script. This
+also lets you expose your own `deno task` shortcuts during plugin development.
+
+```typescript
+// scripts/syncDBIndexes.ts — reusable index sync
+import { userModel } from "@/schemas/user.ts";
+import { orderModel } from "@/schemas/order.ts";
+
+export const syncDBIndexes = async () => {
+  // Use Promise.allSettled so one failing index doesn't abort the rest.
+  await Promise.allSettled([
+    userModel.createIndex({ email: 1 }, { name: "email", unique: true, background: true }),
+    orderModel.createIndex({ createdAt: -1 }, { name: "createdAt", background: true }),
+  ]);
+};
+
+// Allow running directly: `deno run -A scripts/syncDBIndexes.ts`
+if (import.meta.main) {
+  await syncDBIndexes();
+  Deno.exit();
+}
+```
+
+```typescript
+// scripts/setupPlugin.ts — the lifecycle entry point the consumer runs
+import { syncDBIndexes } from "./syncDBIndexes.ts";
+import { seedDefaults } from "./seedDefaults.ts";
+
+await syncDBIndexes().catch(console.warn);
+await seedDefaults().catch(console.warn);
+
+Deno.exit();
+```
+
+```typescript
+// scripts/cleanupPlugin.ts — runs on remove --clean (optional)
+console.log("Plugin uninstalled successfully!");
+```
+
+> Setup scripts should be **idempotent** where possible. `createIndex` is naturally
+> idempotent (re-creating an existing index is a no-op), but inserting seed documents is
+> not — guard seeds with unique indexes or upserts so re-running setup doesn't duplicate
+> data or crash on unique-constraint violations.
+
+#### How a consumer runs setup
+
+```bash
+# During install (defaults to the "production" env if no envs are given):
+deno task add:plugin -n org/plugin-name --setup
+deno task add:plugin -n org/plugin-name --setup=development,production
+
+# Or any time after install (prompts for envs if --envs is omitted):
+deno task setup:plugin -n org/plugin-name
+deno task setup:plugin -n org/plugin-name --envs=development,production
+
+# Run cleanup when removing:
+deno task remove:plugin -n org/plugin-name --clean
+deno task remove:plugin -n org/plugin-name --clean=development,production
+```
+
+The `--setup` / `--clean` / `--envs` values accept a comma-separated list of environments
+(`development`, `production`, `test`). The matching `.env`/`.env.<environment>` files are
+loaded for that run, so make sure `DATABASE_URL` (and any plugin env vars) are set for each
+environment you target before running setup. Each environment is processed with a timeout,
+so keep lifecycle scripts reasonably fast.
+
+> Document in your plugin's README/`llms.txt` exactly what its setup script does (which
+> indexes/seed data it creates) and which env vars must be set before running it.
 
 #### Plugin Development Best Practices
 
@@ -1022,6 +1133,12 @@ deno task check            # Format and lint
 deno task generate:openapi # Generate OpenAPI spec
 deno task generate:sdk     # Generate TypeScript SDK
 deno task generate:app     # Generate a dashboard app in public folder (based on the boilerplate repo: github.com/Huruf-Tech/thunder-ui)
+
+# Plugin management
+deno task add:plugin    -n org/plugin-name [--setup[=env,...]]  # Install (optionally run setup)
+deno task setup:plugin  -n org/plugin-name [--envs=env,...]     # Run a plugin's setup lifecycle (indexes/seeds/migrations)
+deno task update:plugin -n org/plugin-name                      # Update an installed plugin
+deno task remove:plugin -n org/plugin-name [--clean[=env,...]]  # Remove (optionally run cleanup lifecycle)
 ```
 
 ## Common Patterns
