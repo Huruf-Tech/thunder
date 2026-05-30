@@ -74,12 +74,43 @@ skip this step — the core `llms.txt` is sufficient.
    (`deno task add:plugin` / `deno task remove:plugin`). Re-run the discovery
    glob whenever the plugin set may have changed.
 
+## MANDATORY: Refresh Context After Installing a Plugin
+
+Whenever you (the AI agent) install a plugin during development — e.g. you run
+or instruct the user to run `deno task add:plugin -n {org}/{name}` — you MUST
+immediately update your context **before** writing any code that uses it:
+
+1. Read the newly installed plugin's extension file at
+   `./plugins/{org}/{name}/llms.extension.txt` (and its `README.md` if present).
+2. If that file is missing, fall back to inspecting the plugin's `routes/`,
+   `hooks/`, `schemas/`, and `.env.example` to learn what it provides.
+3. Treat the freshly read instructions as authoritative for that plugin before
+   referencing its routes, hooks, models, env vars, or utilities.
+
+Do **NOT** assume or guess a plugin's API from its name. Skipping this step is
+the #1 cause of hallucinated endpoints, env vars, and imports. Re-run the
+discovery glob `./plugins/*/*/llms.extension.txt` after every install, update,
+or removal so your mental model always matches the installed plugin set.
+
+## MANDATORY: Ignore the `_temp` Folder
+
+Strictly **ignore** the `_temp/` directory at the project root. It holds
+transient, throwaway files (scratch output, temporary downloads, intermediate
+build/working artifacts) and is NOT part of the project's source of truth.
+
+- Do NOT read `_temp/` to build context about the project.
+- Do NOT treat anything inside `_temp/` as authoritative or as a convention.
+- Do NOT place new source files, routes, hooks, schemas, or plugins there.
+- Exclude it from discovery globs and code search.
+
 ## Quick Checklist For The Agent
 
 - [ ] Read `./llms.txt` (framework core).
 - [ ] Glob `./plugins/*/*/llms.extension.txt` and read each match.
 - [ ] Merge the knowledge: core rules + per-plugin extensions.
 - [ ] Apply core conventions everywhere; apply plugin rules only within their scope.
+- [ ] After installing/updating/removing ANY plugin, re-read its `llms.extension.txt` and refresh context.
+- [ ] Ignore the `_temp/` folder entirely — never read from or write to it.
 
 ## For Plugin Authors
 

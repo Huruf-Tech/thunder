@@ -107,6 +107,44 @@ export default new Router("/api", function routerName(router) {
 
 3. **Prepare Pattern**: Route handlers use a "prepare" pattern - the outer function is called once at registration, the inner function handles requests.
 
+### Route Grouping with `.group()` (Read Carefully)
+
+`.group("Label")` assigns a router file to a **named group**. A group is a
+**shared label across multiple route files**, NOT a per-file/per-route unique
+name. Its purpose is to organize related endpoints together in the generated
+OpenAPI spec and SDK.
+
+**CRITICAL: The same group label is intentionally reused across related files.**
+
+```typescript
+// routes/blog/posts.ts
+export default new Router("/api", function posts(router) { ... }).group("Blog");
+
+// routes/blog/categories.ts
+export default new Router("/api", function categories(router) { ... }).group("Blog");
+
+// routes/blog/author.ts
+export default new Router("/api", function author(router) { ... }).group("Blog");
+```
+
+All three files above belong to the **same** `"Blog"` group — do NOT give each
+file a different group name just because the filename differs.
+
+**Best practice — colocate grouped files in a same-named folder.** When several
+route files share a group, move them into a folder named after that group:
+
+```
+routes/
+└── blog/
+    ├── posts.ts       → .group("Blog")
+    ├── categories.ts  → .group("Blog")
+    └── author.ts      → .group("Blog")
+```
+
+> Reminder: sub-folders in `routes/` are NOT registered as routes — the folder
+> is purely for code organization. Each file's URL prefix still comes from its
+> own filename + the `Router` base path, independent of the folder.
+
 4. **Shape Function**: The `shape()` function registers validators with the framework. This is used for:
    - Runtime validation of requests
    - OpenAPI specification generation (`deno task generate:openapi`)
@@ -426,6 +464,41 @@ export const userModel = mongodb.db().collection<
 >("users");
 
 ```
+
+### CRITICAL: Reference Field Naming (Foreign References)
+
+Fields that store a reference to another document MUST **NOT** end with the `Id`
+suffix. Name the field after the entity it points to, not after the column.
+
+```typescript
+// ✅ CORRECT - reference fields named after the entity
+const $post = z.object({
+  title: z.string(),
+  user: $objectId.meta({ ref: "users" }),            // references a user document
+  tenant: $objectId.meta({ ref: "tenants" }),          // references a tenant document
+  categories: z.array($objectId.meta({ ref: "categories" })), // references many category documents
+});
+
+// ❌ WRONG - do NOT suffix reference fields with `Id`
+const $post = z.object({
+  title: z.string(),
+  userId: $objectId,
+  tenantId: $objectId,
+  categoryIds: z.array($objectId),
+});
+```
+
+**Naming rules:**
+
+- Single reference: use the singular entity name → `user`, `tenant`, `category`.
+- Multiple references: use the plural entity name → `users`, `categories`, `tags`.
+- Drop the `Id` / `Ids` suffix entirely.
+
+**Why:** Thunder treats these as **foreign references** (`forignRef`). The
+generated SDK can unwrap a reference field into the actual related object on
+demand (a `user` field becomes the populated `User` object, `categories`
+becomes an array of `Category` objects). Suffixing with `Id` breaks this
+relationship inference and forces consumers to resolve references manually.
 
 Basic schema/model usage
 
@@ -750,6 +823,38 @@ import { mongodb } from "../database.ts";
 5. **No comments explaining obvious code** - code should be self-documenting
 6. **Use Response helpers** from `@/core/http/response.ts`
 7. **Validate all inputs** with Zod before processing
+
+### CRITICAL: Prefer Built-in Framework Utilities (Do Not Reinvent or Over-install)
+
+Before writing helper code or reaching for a third-party/npm package, you MUST
+check whether Thunder already ships the capability under `@/core/utils/` (and
+the HTTP helpers under `@/core/http/`). Reuse the built-in utility instead of
+writing your own copy or installing a redundant dependency.
+
+Built-ins that already exist (do NOT re-implement these):
+
+- **Env management** → `Env` from `@/core/utils/env.ts` (don't read `Deno.env` directly or add dotenv libs).
+- **Logging** → `Logger` from `@/core/utils/logger.ts` (don't add a logging package).
+- **Caching** → `cache` from `@/core/utils/cache.ts`.
+- **Hashing** → `createHash` family from `@/core/utils/hash.ts` (don't add crypto/hash libs unless it becomes mandatory or the required feature doesn't exists).
+- **Query parsing** → `queryAsJson` / `parseQueryParams` (don't add a query-string parser).
+- **Pagination** → `paginated` from `@/core/utils/paginate.ts`.
+- **Template rendering** → `ejsRender` / `handlebarsRender` from `@/core/utils/textRender.ts`.
+- **CRUD endpoints** → `createCRUD` and `$objectId` from `@/core/utils/createCRUD.ts`.
+- **Request parsing & auth** → `paramsAsJson`, `bodyAsJson`, `parseBasicAuth`, `serveAssets` from `@/core/http/utils.ts`.
+- **Responses** → `Response` helpers from `@/core/http/response.ts`.
+- **Validation** → `zod` (already a dependency).
+
+Rules:
+
+1. **Search the framework first.** If a utility exists, use it — never hand-roll
+   a duplicate or pull in an external library for something already provided.
+2. **Only add a dependency when there is a genuine, unmet need** (e.g. a
+   third-party SDK like Stripe). Justify any new dependency.
+3. **Prefer Deno std (`@std/*`)** already mapped in `deno.json` over arbitrary
+   npm packages when a standard option exists.
+4. If you believe a built-in is insufficient, prefer composing/wrapping it in
+   your own module over replacing it.
 
 ## Error Handling
 

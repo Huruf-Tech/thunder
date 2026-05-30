@@ -88,6 +88,7 @@ export const linkPlugin = async (name: string, opts?: { cwd?: string }) => {
 
   const globPatterns = [
     "{routes,schemas,hooks,lib,public,sdk-plugins,utils,scripts,assets,common,shared,others}/**/*",
+    "llms.extension.txt",
   ];
 
   for (const pattern of globPatterns) {
