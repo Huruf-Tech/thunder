@@ -303,13 +303,16 @@ export default {
 git clone https://github.com/Huruf-Tech/thunder.git my-app
 cd my-app
 
-# 2. Create .env file with database connection
+# 2. Initialize the project (Warning! This command should only be executed if its a fresh cloned project or you can possibly loose your work!)
+deno task init
+
+# 3. Create .env file with database connection
 echo "DATABASE_URL=mongodb://localhost:27017/my-db" > .env
 
-# 3. (Recommended) Install thunder-core plugin for auth, CORS, security, etc.
+# 4. (Recommended) Install thunder-core plugin for auth, CORS, security, etc.
 deno task add:plugin -n Huruf-Tech/thunder-core
 
-# 4. Start development server with hot reload
+# 5. Start development server with hot reload
 deno task dev
 
 # Server runs on http://localhost:8000
