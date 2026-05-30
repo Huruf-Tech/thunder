@@ -1101,64 +1101,92 @@ router.post("/upload", function uploadFile() {
 
 ## Additional Utilities
 
-These utilities ship with Thunder and are documented in the official docs. They are listed here so this file stays the single source of truth.
+These utilities ship with Thunder under `@/core/utils/`. Import paths and signatures below match the actual source.
 
 ### denoConfig
 
-Provides access to your project's `deno.json` configuration at runtime. Useful for reading project metadata, import maps, or custom config values.
+Provides access to your project's `deno.json` configuration at runtime. Useful for reading project metadata, import maps, tasks, or custom config values. `denoConfig` is an already-resolved object (loaded at module init), NOT a function.
 
 ```typescript
-import { denoConfig } from "@/core/deno-config.ts";
+import { denoConfig, readDenoConfig, denoConfigPath } from "@/core/utils/denoConfig.ts";
 
-const config = await denoConfig();
-console.log(config.name); // your project name
+console.log(denoConfig.name);  // your project name
+console.log(denoConfig.tasks); // configured deno tasks
+
+// To read a different config file explicitly:
+const other = await readDenoConfig("./plugins/foo/deno.json");
+// Pass `true` as the second arg to read statically (JSON.parse, no import cache):
+const fresh = await readDenoConfig(denoConfigPath, true);
 ```
 
-### ejsRenderer
+### Template Rendering (ejsRender / handlebarsRender)
 
-Renders [EJS](https://ejs.co/) templates to HTML strings. Useful for server-side rendering of emails, admin views, or any templated HTML content.
+Render [EJS](https://ejs.co/) or [Handlebars](https://handlebarsjs.com/) templates to strings. Both take the template **content as a string** (not a file path) plus a data object. `ejsRender` is async; `handlebarsRender` is sync.
 
 ```typescript
-import { ejsRenderer } from "@/core/ejs.ts";
+import { ejsRender, handlebarsRender } from "@/core/utils/textRender.ts";
 
-const html = await ejsRenderer("templates/welcome.ejs", {
-  name: "Alice",
-  appName: "Thunder App",
-});
+const html = await ejsRender("<h1>Hello <%= name %></h1>", { name: "Alice" });
 
-return new Response(html, {
-  headers: { "Content-Type": "text/html" },
-});
+const greeting = handlebarsRender("Hello {{name}}", { name: "Bob" });
+
+// To render a file, read it first:
+const tpl = await Deno.readTextFile("templates/welcome.ejs");
+const out = await ejsRender(tpl, { name: "Alice", appName: "Thunder App" });
+
+return new Response(html, { headers: { "Content-Type": "text/html" } });
 ```
 
-### hashProvider
+### Hashing (createHash family)
 
-Secure, one-way hashing and hash verification built on Deno's native cryptographic APIs. The recommended way to hash passwords and other sensitive values.
-
-```typescript
-import { hashProvider } from "@/core/hash.ts";
-
-const hashed = await hashProvider.hash("my_secure_password");
-const isValid = await hashProvider.verify("my_secure_password", hashed);
-```
-
-### envProvider
-
-Bootstraps and initializes the environment variable system. Used internally during startup, but can be called explicitly to reload env variables (e.g. in test contexts). For reading individual variables in app code, use the `Env` utility class instead.
+One-way hashing built on Web Crypto (async) and Node crypto (sync). These produce digests only — there is no `verify` helper; compare digests yourself. Not suitable for password storage on their own (no salting); use a dedicated KDF for passwords.
 
 ```typescript
-import { envProvider } from "@/core/env-provider.ts";
+import {
+  createHash,           // async, hex output
+  createHashBase64,     // async, base64url output
+  createHashSync,       // sync, hex output
+  createHashBase64Sync, // sync, base64url output
+  SupportedHashAlg,
+} from "@/core/utils/hash.ts";
 
-await envProvider();
+const hex = await createHash(SupportedHashAlg.SHA_256, "data");
+const b64 = await createHashBase64(SupportedHashAlg.SHA_256, "data");
+const hexSync = createHashSync(SupportedHashAlg.SHA_256, "data");
+
+// Manual verification:
+const isMatch = (await createHash(SupportedHashAlg.SHA_256, input)) === stored;
 ```
 
 ### parseQueryParams
 
-Parses URL query string parameters from a `Request` and returns them as a typed plain object. A lower-level alternative to `queryAsJson` + Zod parsing when you need raw, unvalidated access.
+Parses a query string into a nested object via `qs`. Takes a **string** (not a `Request`). `queryAsJson(req)` from `@/core/http/utils.ts` wraps this for requests — prefer that in route handlers.
 
 ```typescript
-import { parseQueryParams } from "@/core/http/utils.ts";
+import { parseQueryParams } from "@/core/utils/parseQueryParams.ts";
 
-const params = parseQueryParams(req);
-// { page: "1", limit: "20", search: "thunder" }
+const params = parseQueryParams("?page=1&filter[status]=active");
+// { page: "1", filter: { status: "active" } }
 ```
+
+### paginated
+
+Repeatedly invokes a callback in fixed-size pages until a page returns fewer items than `limit` (i.e. the last page). Useful for batch-processing an entire collection without loading it all at once.
+
+```typescript
+import { paginated } from "@/core/utils/paginate.ts";
+
+await paginated(100, async (offset, limit) => {
+  const batch = await collection.find().skip(offset).limit(limit).toArray();
+
+  for (const doc of batch) {
+    // process each doc...
+  }
+
+  return batch.length; // loop continues while this equals `limit`
+});
+```
+
+### Already documented above
+
+These also live in `@/core/utils/` and are covered in earlier sections: `Env` (env.ts), `Logger` (logger.ts), `cache` (cache.ts), and the CRUD helpers including `createCRUD` and `$objectId` (createCRUD.ts).
