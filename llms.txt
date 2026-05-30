@@ -15,7 +15,7 @@ thunder/
 ├── routes/           # Route handlers (file-based routing)
 │   ├── index.ts      # Fallback router (handles /)
 │   ├── {name}.ts     # Route modules (e.g., users.ts → /users/*)
-│   └── admin/        # Subfolders are ignored (not included in routing)
+│   └── admin/        # Sub-folders are ignored (not included in routing)
 ├── hooks/            # Pre/post request hooks (interceptors)
 ├── plugins/          # External plugins (Thunder projects installed as plugins)
 │   └── {org}/{name}/ # Plugin with its own routes/hooks
@@ -41,8 +41,8 @@ thunder/
   - `routes/posts.ts` → handles `/posts/*`
   - `routes/index.ts` → handles `/` (fallback)
 
-- **Subfolders in `routes/` are ignored** by the framework
-  - `routes/admin/users.ts` is **not** registered (subfolders are skipped)
+- **Sub-folders in `routes/` are ignored** by the framework
+  - `routes/admin/users.ts` is **not** registered (sub-folders are skipped)
   - Only top-level `.ts` files in `routes/` are discovered
   - Use this for code organization, not routing
 
@@ -1095,4 +1095,70 @@ router.post("/upload", function uploadFile() {
     return Response.json({ filename: file.name });
   };
 });
+```
+
+---
+
+## Additional Utilities
+
+These utilities ship with Thunder and are documented in the official docs. They are listed here so this file stays the single source of truth.
+
+### denoConfig
+
+Provides access to your project's `deno.json` configuration at runtime. Useful for reading project metadata, import maps, or custom config values.
+
+```typescript
+import { denoConfig } from "@/core/deno-config.ts";
+
+const config = await denoConfig();
+console.log(config.name); // your project name
+```
+
+### ejsRenderer
+
+Renders [EJS](https://ejs.co/) templates to HTML strings. Useful for server-side rendering of emails, admin views, or any templated HTML content.
+
+```typescript
+import { ejsRenderer } from "@/core/ejs.ts";
+
+const html = await ejsRenderer("templates/welcome.ejs", {
+  name: "Alice",
+  appName: "Thunder App",
+});
+
+return new Response(html, {
+  headers: { "Content-Type": "text/html" },
+});
+```
+
+### hashProvider
+
+Secure, one-way hashing and hash verification built on Deno's native cryptographic APIs. The recommended way to hash passwords and other sensitive values.
+
+```typescript
+import { hashProvider } from "@/core/hash.ts";
+
+const hashed = await hashProvider.hash("my_secure_password");
+const isValid = await hashProvider.verify("my_secure_password", hashed);
+```
+
+### envProvider
+
+Bootstraps and initializes the environment variable system. Used internally during startup, but can be called explicitly to reload env variables (e.g. in test contexts). For reading individual variables in app code, use the `Env` utility class instead.
+
+```typescript
+import { envProvider } from "@/core/env-provider.ts";
+
+await envProvider();
+```
+
+### parseQueryParams
+
+Parses URL query string parameters from a `Request` and returns them as a typed plain object. A lower-level alternative to `queryAsJson` + Zod parsing when you need raw, unvalidated access.
+
+```typescript
+import { parseQueryParams } from "@/core/http/utils.ts";
+
+const params = parseQueryParams(req);
+// { page: "1", limit: "20", search: "thunder" }
 ```
