@@ -768,6 +768,60 @@ if (!authorized) {
 throw new Error("Something went wrong");
 ```
 
+## Critical: Never Edit `core/` or `plugins/`
+
+These directories are managed by the framework and are overwritten by update
+commands. Any manual changes you make inside them WILL BE LOST.
+
+1. **Never edit anything in `core/`.** It contains framework internals that are
+   replaced when the developer runs `deno task update:core`. Editing core files
+   means your changes vanish on the next update, and you also miss out on
+   upstream bug fixes and security patches.
+
+2. **Never edit anything in `plugins/`.** Each plugin under
+   `plugins/{org}/{name}/` is an externally-managed package. Running
+   `deno task update:plugin -n org/plugin-name` re-pulls the plugin and discards
+   any local edits.
+
+3. **Build on top instead of modifying.** To change or extend behavior:
+   - Add your own files in `routes/`, `hooks/`, `schemas/`, `scripts/`, etc.
+   - Use **hooks** to intercept/augment request and response handling.
+   - Wrap or compose core utilities in your own modules under the project root.
+   - For plugins, configure them via environment variables and your own hooks —
+     never by editing the plugin source.
+
+> The ONLY time editing `core/` or `plugins/` is acceptable is while
+> **experimenting or debugging locally**. Treat such edits as throwaway and
+> never rely on them persisting — they will be overwritten on the next update.
+
+## Updating the Framework Core
+
+Keep the project current with the latest features, bug fixes, and security
+patches by regularly updating the core:
+
+```bash
+deno task update:core
+```
+
+This pulls the latest framework files from the official Thunder repository
+(`Huruf-Tech/thunder`) and overwrites the managed files (primarily `core/` and
+`serve.base.ts`). Because it overwrites these files, this is exactly why you must
+NOT edit them manually (see the section above).
+
+Recommended workflow:
+
+1. Commit or stash your own work first (so the update diff is clean).
+2. Run `deno task update:core`.
+3. Run `deno task check` (format + lint) and verify the app still boots with
+   `deno task dev`.
+4. Review the update diff for any new conventions or breaking changes.
+
+Keep installed plugins up to date as well:
+
+```bash
+deno task update:plugin -n org/plugin-name
+```
+
 ## Plugin System
 
 Thunder uses a **unified project-plugin architecture**: A Thunder project IS a Thunder plugin. No special structure needed.
@@ -1130,6 +1184,7 @@ deno task add:plugin -n myorg/thunder-plugin-email
 deno task dev              # Development server with hot reload
 deno task start            # Production server
 deno task check            # Format and lint
+deno task update:core      # Update the framework core (latest features + security patches; overwrites core/)
 deno task generate:openapi # Generate OpenAPI spec
 deno task generate:sdk     # Generate TypeScript SDK
 deno task generate:app     # Generate a dashboard app in public folder (based on the boilerplate repo: github.com/Huruf-Tech/thunder-ui)

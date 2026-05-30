@@ -1,0 +1,97 @@
+# Thunder Framework - Full Context Manifest (llms-full.txt)
+
+> This file is an INSTRUCTION MANIFEST for AI agents. It does not contain the
+> documentation itself. Instead, it tells you which files to read in order to
+> build a COMPLETE mental model of this project: the Thunder framework core
+> PLUS every installed plugin.
+
+## How To Use This File (AI Agent Instructions)
+
+To gain full context of this codebase, read the following sources IN ORDER.
+Treat their combined contents as the authoritative specification before
+writing or modifying any code.
+
+### Step 1 - Read the core framework reference (REQUIRED)
+
+Read the root reference file:
+
+```
+./llms.txt
+```
+
+`llms.txt` is the single source of truth for the Thunder framework itself:
+project structure, routing, hooks, validation, environment variables,
+database/model conventions, response helpers, utilities, and code style.
+Always follow its rules.
+
+### Step 2 - Read every installed plugin's extension file (REQUIRED IF PLUGINS EXIST)
+
+Plugins are installed under `plugins/{org}/{name}/`. Each plugin MAY ship its
+own AI instruction file named:
+
+```
+llms.extension.txt
+```
+
+Discover and read EVERY one of them using this glob pattern (relative to the
+project root):
+
+```
+./plugins/*/*/llms.extension.txt
+```
+
+For example, if these plugins are installed:
+
+```
+plugins/
+├── Huruf-Tech/
+│   └── thunder-auth/
+│       └── llms.extension.txt   ← read this
+└── myorg/
+    └── thunder-stripe/
+        └── llms.extension.txt   ← read this
+```
+
+...then you must read BOTH `plugins/Huruf-Tech/thunder-auth/llms.extension.txt`
+and `plugins/myorg/thunder-stripe/llms.extension.txt`.
+
+If the `plugins/` directory is empty or contains no `llms.extension.txt` files,
+skip this step — the core `llms.txt` is sufficient.
+
+## Reading Rules & Precedence
+
+1. **Core first, plugins second.** The root `llms.txt` defines the base
+   framework contract. Plugin `llms.extension.txt` files EXTEND it; they must
+   never contradict core conventions (routing patterns, named functions,
+   `@/` import alias, the prepare/shape pattern, hook priority where higher
+   numbers run first, etc.).
+2. **Plugin instructions are additive.** A plugin extension only describes that
+   plugin's routes, hooks, models, env vars, and usage. Apply it only when
+   working with that plugin.
+3. **Conflicts resolve to core.** If a plugin extension appears to conflict with
+   `llms.txt`, prefer `llms.txt` and flag the discrepancy to the user.
+4. **Re-read on change.** Plugins can be added or removed at any time
+   (`deno task add:plugin` / `deno task remove:plugin`). Re-run the discovery
+   glob whenever the plugin set may have changed.
+
+## Quick Checklist For The Agent
+
+- [ ] Read `./llms.txt` (framework core).
+- [ ] Glob `./plugins/*/*/llms.extension.txt` and read each match.
+- [ ] Merge the knowledge: core rules + per-plugin extensions.
+- [ ] Apply core conventions everywhere; apply plugin rules only within their scope.
+
+## For Plugin Authors
+
+If you are building a Thunder plugin, ship an `llms.extension.txt` at the root
+of your plugin repository (so it lands at `plugins/{org}/{name}/llms.extension.txt`
+once installed). In it, document only what your plugin adds on top of the core
+framework:
+
+- Routes/endpoints your plugin exposes (method, path, purpose)
+- Hooks your plugin registers (and their priority)
+- Models/schemas it introduces
+- Environment variables it requires or optionally reads
+- Any plugin-specific usage examples
+
+Do NOT restate core framework rules — those already live in the root `llms.txt`.
