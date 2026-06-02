@@ -31,4 +31,6 @@ if (import.meta.main) {
   });
 
   console.info("SDK plugin has been generated");
+
+  Deno.exit();
 }

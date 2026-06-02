@@ -28,4 +28,6 @@ if (import.meta.main) {
   });
 
   console.info("SDK has been generated");
+
+  Deno.exit();
 }

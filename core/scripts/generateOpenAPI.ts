@@ -25,4 +25,6 @@ if (import.meta.main) {
   });
 
   console.info("OpenAPI spec has been generated");
+
+  Deno.exit();
 }

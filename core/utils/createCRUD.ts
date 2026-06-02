@@ -429,7 +429,19 @@ export const paginationSchema = z.object(
       .describe(
         "Provide a sorting information in mongodb sort object format",
       ),
-    project: z.record(z.string(), z.coerce.number().min(0).max(1)).optional()
+    project: z.record(
+      z.string(),
+      z.union([
+        z.literal(0),
+        z.literal(1),
+        z.object({
+          $slice: z.union([
+            z.coerce.number(),
+            z.tuple([z.coerce.number(), z.coerce.number()]),
+          ]),
+        }),
+      ]),
+    ).optional()
       .describe(
         "Provide a projection information in mongodb project object format",
       ),

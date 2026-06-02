@@ -45,4 +45,6 @@ async function setupEnvironment() {
 
 if (import.meta.main) {
   await setupEnvironment();
+
+  Deno.exit();
 }
