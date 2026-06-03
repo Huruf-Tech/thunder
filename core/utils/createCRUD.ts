@@ -432,8 +432,7 @@ export const paginationSchema = z.object(
     project: z.record(
       z.string(),
       z.union([
-        z.literal(0),
-        z.literal(1),
+        z.coerce.number().min(0).max(1),
         z.object({
           $slice: z.union([
             z.coerce.number(),
