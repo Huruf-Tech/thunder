@@ -342,6 +342,8 @@ git clone https://github.com/Huruf-Tech/thunder.git my-app
 cd my-app
 
 # 2. Initialize the project (Warning! This command should only be executed if its a fresh cloned project or you can possibly loose your work!)
+#    `init` RESETS git history (deletes .git, re-inits a fresh repo), runs `setup`, and configures env.
+#    Use this only when starting a BRAND-NEW project from the Thunder template.
 deno task init
 
 # 3. Create .env file with database connection
@@ -354,6 +356,29 @@ deno task add:plugin -n Huruf-Tech/thunder-core
 deno task dev
 
 # Server runs on http://localhost:8000
+```
+
+### `init` vs `setup` — Pick the Right One
+
+Choose based on how you obtained the project:
+
+- **Starting a brand-new project** from the Thunder template → run `deno task init`.
+  It wipes the existing git history (`rm -rf .git`), initializes a fresh repo,
+  runs `deno task setup`, and sets up environment files.
+  ⚠️ Destructive — never run it on a repo whose history you want to keep.
+
+- **Cloned or forked an existing repository** (contributing to or continuing an
+  existing project) → run `deno task setup`.
+  It only configures the local git settings (`core.ignorecase false` and the
+  `.githooks` path) without touching history, so the project's git hooks (lint,
+  commit-message checks) work correctly.
+
+```bash
+# Brand-new project from the template:
+deno task init
+
+# Cloned/forked an existing project:
+deno task setup
 ```
 
 ### Environment Variables
@@ -989,18 +1014,23 @@ deno task add:plugin -n Huruf-Tech/thunder-core
 git clone https://github.com/Huruf-Tech/thunder.git my-project
 cd my-project
 
-# 2. Add .env file with database connection
+# 2. Prepare the project
+#    - Brand-new project from the template?   → deno task init  (resets git history)
+#    - Cloned/forked an existing project?      → deno task setup (configures git hooks only)
+deno task init   # or: deno task setup
+
+# 3. Add .env file with database connection
 echo "DATABASE_URL=mongodb://localhost:27017/my-db" > .env
 
-# 3. Install core plugin (recommended for most projects)
+# 4. Install core plugin (recommended for most projects)
 deno task add:plugin -n Huruf-Tech/thunder-core
 
-# 4. Handle any missing env variables
+# 5. Handle any missing env variables
 # Run: deno task dev
 # Fix any errors by setting required env vars in .env
 # (Plugin docs should mention required variables)
 
-# 5. Start coding
+# 6. Start coding
 deno task dev
 ```
 
@@ -1286,6 +1316,8 @@ deno task add:plugin -n myorg/thunder-plugin-email
 ## Available Tasks
 
 ```bash
+deno task init             # Initialize a BRAND-NEW project (resets git history, runs setup, sets up env) — destructive
+deno task setup            # Prepare a CLONED/FORKED project (configures git settings + .githooks; no history reset)
 deno task dev              # Development server with hot reload
 deno task start            # Production server
 deno task check            # Format and lint

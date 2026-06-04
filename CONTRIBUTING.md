@@ -38,13 +38,13 @@ cd thunder
 
 2. **Install [Deno](https://docs.deno.com/runtime/getting_started/installation/)** (v2 or newer). Thunder uses Deno's built-in tooling, so there is no separate package install step.
 
-3. **Set up git hooks and environment.** The hooks enforce formatting, linting, and commit conventions.
+3. **Set up the project.** Since you cloned/forked an existing repository, run `deno task setup`. It configures your local git settings and the `.githooks` path so the hooks that enforce formatting, linting, and commit conventions work.
 
 ```bash
-git config core.hooksPath .githooks
+deno task setup
 ```
 
-> ⚠️ Do **not** run `deno task init` on a clone you intend to contribute from — it resets git history. That task is only for bootstrapping a brand-new project.
+> ⚠️ Do **not** run `deno task init` on a clone you intend to contribute from — it resets git history (`rm -rf .git`). That task is only for bootstrapping a brand-new project from the template. Use `deno task setup` instead.
 
 4. **Add a database connection** if you want to run the server locally:
 
