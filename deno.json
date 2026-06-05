@@ -1,8 +1,12 @@
 {
+  "minimumDependencyAge": "P7D",
   "compilerOptions": {
     "types": ["./index.d.ts"]
   },
   "lint": {
+    "rules": {
+      "include": ["no-eval"]
+    },
     "plugins": [
       "./core/lint-plugins/no-relative-core-imports.ts",
       "./core/lint-plugins/no-relative-database-imports.ts"
