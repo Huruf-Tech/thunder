@@ -148,16 +148,16 @@ export const createCRUD = <T extends z.ZodObject>(
         handler: async (req: Request) => {
           const body = $body.parse(await bodyAsJson(req));
 
-          const data = details.schema.parse({
-            ...body,
-            ...(await opts?.isolationFields?.(req, "create")),
-          }) as any;
-
           const exec = async (session?: ClientSession) => {
-            const dataToInsert = (await opts?.hooks?.beforeCreate?.(
-              { data, session },
+            const data = (await opts?.hooks?.beforeCreate?.(
+              { data: body, session },
               req,
-            )) ?? data;
+            )) ?? body;
+
+            const dataToInsert = details.schema.parse({
+              ...data,
+              ...(await opts?.isolationFields?.(req, "create")),
+            }) as any;
 
             const { insertedId } = await details.model.insertOne(
               dataToInsert,
