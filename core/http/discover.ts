@@ -1,9 +1,10 @@
+import { getURL } from "@/core/http/utils.ts";
 import { loadHooks } from "./hooks.ts";
 import { findRouter } from "./routes.ts";
 import { TMethod, TRouteExecutor } from "./router.ts";
 
 export const discover = async (req: Request): Promise<TRouteExecutor> => {
-  const url = new URL(req.url);
+  const url = getURL(req);
 
   const pathnameParts = url.pathname.split("/").filter(
     Boolean,

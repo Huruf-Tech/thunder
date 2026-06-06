@@ -1,9 +1,16 @@
 import { exists } from "@std/fs/exists";
-import { parseQueryParams } from "../utils/parseQueryParams.ts";
+import { parseQueryParams } from "@/core/utils/parseQueryParams.ts";
+import { cache } from "@/core/utils/cache.ts";
 import { join } from "@std/path/join";
 import { serveFile } from "@std/http/file-server";
 import { indexFileCache, paramsMap } from "./constants.ts";
 import type { IParseOptions } from "qs";
+
+const parseURL = (url: string) => new URL(url);
+
+export const getURL = (req: Request) => {
+  return cache(parseURL, req)(req.url);
+};
 
 export const paramsAsJson = <T extends Record<string, string>>(
   req: Request,
@@ -12,7 +19,7 @@ export const paramsAsJson = <T extends Record<string, string>>(
 };
 
 export const queryAsJson = (req: Request, opts?: IParseOptions) => {
-  const url = new URL(req.url);
+  const url = getURL(req);
 
   return parseQueryParams(url.search, opts);
 };
