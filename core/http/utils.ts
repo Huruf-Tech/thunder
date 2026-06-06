@@ -1,15 +1,21 @@
 import { exists } from "@std/fs/exists";
 import { parseQueryParams } from "@/core/utils/parseQueryParams.ts";
-import { cache } from "@/core/utils/cache.ts";
 import { join } from "@std/path/join";
 import { serveFile } from "@std/http/file-server";
 import { indexFileCache, paramsMap } from "./constants.ts";
 import type { IParseOptions } from "qs";
 
-const parseURL = (url: string) => new URL(url);
+const urlCache = new WeakMap<Request, URL>();
 
 export const getURL = (req: Request) => {
-  return cache(parseURL, req)(req.url);
+  let url = urlCache.get(req);
+
+  if (!url) {
+    url = new URL(req.url);
+    urlCache.set(req, url);
+  }
+
+  return url;
 };
 
 export const paramsAsJson = <T extends Record<string, string>>(

@@ -1,6 +1,6 @@
 import { expandGlob } from "@std/fs/expand-glob";
 import { toFileUrl } from "@std/path/to-file-url";
-import { cache } from "@/core/utils/cache.ts";
+import { memoize } from "@/core/utils/cache.ts";
 import { listPlugins } from "@/core/lib/listPlugins.ts";
 import { join } from "@std/path/join";
 
@@ -36,7 +36,7 @@ const importHook = async (path: string) => {
   throw new Error(`Invalid hook encountered at: ${path}`);
 };
 
-export const loadHooks = cache(async (
+export const loadHooks = memoize(async (
   globPattern: string,
 ): Promise<THook[]> => {
   const hooksDir = "./hooks";
@@ -66,4 +66,4 @@ export const loadHooks = cache(async (
   hooks.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
 
   return hooks;
-}, Infinity);
+}, (globPattern) => globPattern);

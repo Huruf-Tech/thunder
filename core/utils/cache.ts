@@ -164,3 +164,34 @@ function isPromise(value: unknown): value is Promise<unknown> {
     typeof (value as { then?: unknown }).then === "function"
   );
 }
+
+/**
+ * Memoize forever using a caller-provided string key.
+ *
+ * Unlike {@link cache}, this never hashes the arguments (no ohash), so it is
+ * cheap enough for hot paths that look up the same constant keys on every
+ * request. Pending promises are evicted on rejection so failed work retries.
+ */
+export function memoize<A extends unknown[], R>(
+  fn: (...args: A) => R,
+  keyFn: (...args: A) => string,
+): (...args: A) => R {
+  const store = new Map<string, R>();
+
+  return (...args: A): R => {
+    const key = keyFn(...args);
+
+    if (store.has(key)) return store.get(key) as R;
+
+    const result = fn(...args);
+    store.set(key, result);
+
+    if (isPromise(result)) {
+      result.then(undefined, () => {
+        if (store.get(key) === result) store.delete(key);
+      });
+    }
+
+    return result;
+  };
+}

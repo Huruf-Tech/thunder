@@ -65,6 +65,7 @@ export class Router {
     {
       fullPath: string;
       endpoint: string;
+      isStatic: boolean;
       parser: MatchFunction<Record<string, string>>;
       methods: {
         [K in TMethod]?: {
@@ -167,6 +168,9 @@ export class Router {
       this.registry.set(endpoint, {
         fullPath: this.toFullPath(endpoint),
         endpoint,
+        // Static endpoints carry no path-to-regexp tokens, so they can be
+        // matched with a plain string compare instead of running the regex.
+        isStatic: !/[:*{}()?]/.test(endpoint),
         parser: match(endpoint),
         methods: {
           [resolvedMethod]: {
@@ -211,31 +215,27 @@ export class Router {
   protected all: TRegisterMethod = (path, prepare) =>
     this.registerMethod(path, prepare);
 
-  protected tryHandle = async (callback: () => Promise<Response>) => {
-    try {
-      return await callback();
-    } catch (error) {
-      if (error instanceof ZodError) {
-        return Response.json({
-          error: z.prettifyError(error),
-        }, { status: 400 });
-      }
-
-      if (error instanceof Response) {
-        return error;
-      }
-
+  protected toErrorResponse(error: unknown): Response {
+    if (error instanceof ZodError) {
       return Response.json({
-        error: error instanceof Error
-          ? {
-            message: error.message,
-            name: error.name,
-            stack: Env.is(EnvType.DEVELOPMENT) ? error.stack : undefined,
-          }
-          : error,
-      }, { status: 500 });
+        error: z.prettifyError(error),
+      }, { status: 400 });
     }
-  };
+
+    if (error instanceof Response) {
+      return error;
+    }
+
+    return Response.json({
+      error: error instanceof Error
+        ? {
+          message: error.message,
+          name: error.name,
+          stack: Env.is(EnvType.DEVELOPMENT) ? error.stack : undefined,
+        }
+        : error,
+    }, { status: 500 });
+  }
 
   protected async runPreHooksAndHandler(
     req: Request,
@@ -276,6 +276,47 @@ export class Router {
       new Response("Request handler not found", { status: 404 });
   }
 
+  protected async execute(
+    req: Request,
+    hooks: THook[],
+    details:
+      | {
+        name?: string;
+        handler?: TPreparedHandler;
+      }
+      | undefined,
+    routeMatch: MatchResult<Record<string, string>> | undefined,
+  ): Promise<Response> {
+    try {
+      // Inner boundary: turn handler/pre-hook errors into a Response so that
+      // post hooks still observe a response, mirroring the original behaviour.
+      let res: Response;
+
+      try {
+        res = await this.runPreHooksAndHandler(req, hooks, details, routeMatch);
+      } catch (error) {
+        res = this.toErrorResponse(error);
+      }
+
+      for (const hook of hooks) {
+        if (typeof hook.post === "function") {
+          const hookRes = await hook.post({
+            req,
+            res,
+            scope: this.name,
+            name: details?.name,
+          });
+
+          if (hookRes instanceof Response) return hookRes;
+        }
+      }
+
+      return res;
+    } catch (error) {
+      return this.toErrorResponse(error);
+    }
+  }
+
   protected handle = (
     details?: {
       name?: string;
@@ -283,28 +324,8 @@ export class Router {
     },
     routeMatch?: MatchResult<Record<string, string>>,
   ) => {
-    return async (req: Request, ...hooks: THook[]) => {
-      return await this.tryHandle(async () => {
-        const res = await this.tryHandle(() =>
-          this.runPreHooksAndHandler(req, hooks, details, routeMatch)
-        );
-
-        for (const hook of hooks) {
-          if (typeof hook.post === "function") {
-            const hookRes = await hook.post({
-              req,
-              res,
-              scope: this.name,
-              name: details?.name,
-            });
-
-            if (hookRes instanceof Response) return hookRes;
-          }
-        }
-
-        return res;
-      });
-    };
+    return (req: Request, hooks: THook[] = EMPTY_HOOKS) =>
+      this.execute(req, hooks, details, routeMatch);
   };
 
   public group(name: string) {
@@ -327,9 +348,19 @@ export class Router {
     }
 
     for (const routing of this.registry.values()) {
-      const routeMatch = routing.parser(targetEndpoint);
+      // Static endpoints skip the regex and match by string equality; dynamic
+      // ones still run their compiled matcher. Registration order is preserved
+      // either way, so route precedence is unchanged.
+      let routeMatch: MatchResult<Record<string, string>> | undefined;
 
-      if (!routeMatch) continue;
+      if (routing.isStatic) {
+        if (routing.endpoint !== targetEndpoint) continue;
+        routeMatch = STATIC_MATCH;
+      } else {
+        const matched = routing.parser(targetEndpoint);
+        if (!matched) continue;
+        routeMatch = matched;
+      }
 
       const handlerObj = routing.methods[method] || routing.methods["all"];
 
@@ -341,3 +372,10 @@ export class Router {
     return this.handle();
   }
 }
+
+const EMPTY_HOOKS: THook[] = [];
+
+const STATIC_MATCH: MatchResult<Record<string, string>> = {
+  path: "",
+  params: Object.freeze({}) as Record<string, string>,
+};

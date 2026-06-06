@@ -2,11 +2,11 @@ import { expandGlob } from "@std/fs/expand-glob";
 import { basename } from "@std/path/basename";
 import { join } from "@std/path/join";
 import { toFileUrl } from "@std/path/to-file-url";
-import { cache } from "@/core/utils/cache.ts";
+import { memoize } from "@/core/utils/cache.ts";
 import { listPlugins } from "@/core/lib/listPlugins.ts";
 import { Router } from "@/core/http/router.ts";
 
-export const findRouter = cache(async (
+export const findRouter = memoize(async (
   globPattern: string,
   target: string,
 ) => {
@@ -58,9 +58,9 @@ export const findRouter = cache(async (
     router: (await import(toFileUrl(join(routesRoot, "index.ts")).href))
       .default as Router,
   };
-}, Infinity);
+}, (globPattern, target) => `${globPattern}\u0000${target}`);
 
-export const loadRouters = cache(async (globPattern: string) => {
+export const loadRouters = memoize(async (globPattern: string) => {
   const routesDir = "./routes";
   const routesRoot = join(Deno.cwd(), routesDir);
 
@@ -108,4 +108,4 @@ export const loadRouters = cache(async (globPattern: string) => {
   }
 
   return routers;
-}, Infinity);
+}, (globPattern) => globPattern);
