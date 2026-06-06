@@ -17,7 +17,7 @@ export const discover = async (req: Request): Promise<TRouteExecutor> => {
   );
 
   const resolvedEndpoint = fallback
-    ? `/${pathnameParts.join("/") ?? ""}`
+    ? url.pathname
     : `/${endpointParts.join("/") ?? ""}`;
 
   const exec = router.route(
@@ -25,11 +25,14 @@ export const discover = async (req: Request): Promise<TRouteExecutor> => {
     resolvedEndpoint,
   );
 
-  return async (req: Request) =>
-    typeof exec === "function"
-      ? await exec(
+  return async (req: Request) => {
+    if (typeof exec === "function") {
+      return await exec(
         req,
         ...(await loadHooks(`./**/*.ts`)),
-      )
-      : new Response("Not found", { status: 404 });
+      );
+    }
+
+    return new Response("Not found", { status: 404 });
+  };
 };
