@@ -146,7 +146,7 @@ export const createCRUD = <T extends z.ZodObject>(
           return: $return,
         }),
         handler: async (req: Request) => {
-          const body = $body.parse(await bodyAsJson(req));
+          const body = $body.parse(await bodyAsJson(req)) as any;
 
           const exec = async (session?: ClientSession) => {
             const data = (await opts?.hooks?.beforeCreate?.(
