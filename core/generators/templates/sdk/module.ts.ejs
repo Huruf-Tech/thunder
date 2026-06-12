@@ -24,7 +24,25 @@ export <%- types.return %>
 <% } -%>
 
 export const <%- name %>Module = (sdk: typeof BaseSDK) => {
+    const type = {} as unknown as {
+<% for (const [methodName, { types }] of Object.entries(methods)) { -%>
+<% if(types.params) { -%>
+        <%- methodName %>$params: <%- methodName %>$params,
+<% } -%>
+<% if(types.query) { -%>
+        <%- methodName %>$query: <%- methodName %>$query,
+<% } -%>
+<% if(types.body) { -%>
+        <%- methodName %>$body: <%- methodName %>$body,
+<% } -%>
+<% if(types.return) { -%>
+        <%- methodName %>$return: <%- methodName %>$return,
+<% } -%>
+<% } -%>
+    };
+
     const methods = {
+        type,
 <% for (const [methodName, { types, method, endpoint }] of Object.entries(methods)) { -%>
     <% const isDataOptional = !types.params && !types.query && !types.body; -%>
     <%- methodName %>(data<%- isDataOptional ? "?" : "" %>: {
