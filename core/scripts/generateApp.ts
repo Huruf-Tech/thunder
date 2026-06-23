@@ -1,3 +1,4 @@
+// deno-lint-ignore-file ban-ts-comment
 import { parseArgs as parse } from "@std/cli/parse-args";
 import { dirname, join, relative } from "@std/path";
 import { normalize } from "@std/path/posix/normalize";
@@ -144,6 +145,12 @@ export const generateApp = async (options: {
     const tempPackageJSON = await readJSONFile<IPackageJSON>(
       tempPackageJSONPath,
     );
+
+    //@ts-ignore
+    delete tempPackageJSON.name;
+    //@ts-ignore
+    delete tempPackageJSON.version;
+
     const packageJSON = await readJSONFile<IPackageJSON>(packageJSONPath);
 
     const updatedPackageJSON = deepMergeUnique(packageJSON, tempPackageJSON);
