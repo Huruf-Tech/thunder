@@ -187,18 +187,25 @@ export const createCRUD = <T extends z.ZodObject>(
 
   if (!opts?.disable?.count) {
     details.router.get("/count", function count() {
+      const $query = paginationSchema.pick({
+        filters: true,
+      });
       const $return = z.object({
         count: z.number(),
       });
 
       return {
         shape: () => ({
+          query: $query,
           return: $return,
         }),
         handler: async (req: Request) => {
-          const count = await details.model.countDocuments(
-            await opts?.isolationFields?.(req, "count") as any,
-          );
+          const query = $query.parse(queryAsJson(req));
+
+          const count = await details.model.countDocuments({
+            ...(query.filters ? normalizeFilters(query.filters) : {}),
+            ...(await opts?.isolationFields?.(req, "count") as any),
+          });
 
           return Response.json({ count } satisfies z.output<typeof $return>);
         },
