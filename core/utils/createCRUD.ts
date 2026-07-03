@@ -189,6 +189,7 @@ export const createCRUD = <T extends z.ZodObject>(
     details.router.get("/count", function count() {
       const $query = paginationSchema.pick({
         filters: true,
+        subFilters: true,
       });
       const $return = z.object({
         count: z.number(),
@@ -204,6 +205,7 @@ export const createCRUD = <T extends z.ZodObject>(
 
           const count = await details.model.countDocuments({
             ...(query.filters ? normalizeFilters(query.filters) : {}),
+            ...(query.subFilters ? normalizeFilters(query.subFilters) : {}),
             ...(await opts?.isolationFields?.(req, "count") as any),
           });
 
@@ -252,6 +254,11 @@ export const createCRUD = <T extends z.ZodObject>(
             ...(query.filters
               ? [{
                 $match: normalizeFilters(query.filters),
+              }]
+              : emptyArray),
+            ...(query.subFilters
+              ? [{
+                $match: normalizeFilters(query.subFilters),
               }]
               : emptyArray),
             ...(query.sort ? [{ $sort: query.sort }] : emptyArray),
