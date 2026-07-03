@@ -282,7 +282,17 @@ export const generateNpmModule = async (opts: {
     await emptyDir("./npm");
 
     await build({
-      entryPoints: ["./index.ts", "./base.ts", "./types.ts"],
+      entryPoints: [
+        "./index.ts", 
+        {
+          name: "./base",
+          path: "./base.ts",
+        },
+        {
+          name: "./types",
+          path: "./types.ts",
+        }
+      ],
       outDir: "./npm",
       shims: {
         // see JS docs for overview and more options
