@@ -47,6 +47,10 @@ export class ThunderSDK extends BaseSDK {
         >;
     }
 
+    static hasModule(name: string) {
+        return this.getModuleNames().includes(name);
+    }
+
     static getMetadata(module: object | string) {
         if (typeof module === "object") {
             return this._moduleMetadata.get(module);
@@ -57,6 +61,20 @@ export class ThunderSDK extends BaseSDK {
         );
     }
 
+    static hasMetadata(module: object | string) {
+        try {
+            if (typeof module === "object") {
+                return this._moduleMetadata.has(module);
+            }
+
+            return this._moduleMetadata.has(
+                this.getModule(module),
+            );
+        } catch {
+            return false;
+        }
+    }
+
     static getGroup(module: object | string) {
         if (typeof module === "object") {
             return this._moduleGroup.get(module);
@@ -65,6 +83,20 @@ export class ThunderSDK extends BaseSDK {
         return this._moduleGroup.get(
             this.getModule(module),
         );
+    }
+
+    static hasGroup(module: object | string) {
+        try {
+            if (typeof module === "object") {
+                return this._moduleGroup.has(module);
+            }
+
+            return this._moduleGroup.has(
+                this.getModule(module),
+            );
+        } catch {
+            return false;
+        }
     }
 
     static listActions(moduleName?: string) {
