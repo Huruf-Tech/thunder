@@ -2,8 +2,8 @@ import axios, { type AxiosRequestConfig, type AxiosInstance, type AxiosResponse 
 import type { TSDKOptions, TCacheKey, TCacheOptions } from "./types.ts";
 
 export class BaseSDK {
-    protected static _moduleGroup = new WeakMap<object, string>();
-    protected static _moduleMetadata = new WeakMap<object, Record<string, unknown>>();
+    protected static _moduleGroup = new Map<object, string>();
+    protected static _moduleMetadata = new Map<object, Record<string, unknown>>();
 
     protected static _useCachingMethods = new Map<string, unknown>();
     protected static _cachingActivity = new Map<string, {
