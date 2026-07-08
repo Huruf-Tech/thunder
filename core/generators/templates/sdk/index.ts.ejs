@@ -91,6 +91,10 @@ export class ThunderSDK extends BaseSDK {
                 return this._moduleGroup.has(module);
             }
 
+            if(!this.hasModule(module)) {
+                return this._moduleGroup.values().includes(module);
+            }
+
             return this._moduleGroup.has(
                 this.getModule(module),
             );
