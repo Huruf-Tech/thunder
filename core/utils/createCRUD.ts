@@ -108,6 +108,27 @@ export const $objectId = z.preprocess((val) => {
   return val;
 }, z.instanceof(ObjectId)).meta({ tsType: "string" });
 
+const emptyArray: any[] = [];
+
+export const paginatedAggregation = (
+  query: z.infer<typeof paginationSchema>,
+) => [
+  ...(query.filters
+    ? [{
+      $match: normalizeFilters(query.filters),
+    }]
+    : emptyArray),
+  ...(query.subFilters
+    ? [{
+      $match: normalizeFilters(query.subFilters),
+    }]
+    : emptyArray),
+  ...(query.sort ? [{ $sort: query.sort }] : emptyArray),
+  ...(query.offset ? [{ $skip: query.offset }] : emptyArray),
+  ...(query.limit ? [{ $limit: query.limit }] : emptyArray),
+  ...(query.project ? [{ $project: query.project }] : emptyArray),
+];
+
 export const createCRUD = <T extends z.ZodObject>(
   details: TCrudDetails<T>,
   opts?: TCrudOptions<T>,
@@ -215,8 +236,6 @@ export const createCRUD = <T extends z.ZodObject>(
     });
   }
 
-  const emptyArray: any[] = [];
-
   if (!opts?.disable?.get) {
     details.router.get("{/:id}", function get() {
       const $params = z.object({
@@ -251,20 +270,7 @@ export const createCRUD = <T extends z.ZodObject>(
                 ? opts.projection.map(($project) => ({ $project }))
                 : [{ $project: opts.projection }]
               : emptyArray),
-            ...(query.filters
-              ? [{
-                $match: normalizeFilters(query.filters),
-              }]
-              : emptyArray),
-            ...(query.subFilters
-              ? [{
-                $match: normalizeFilters(query.subFilters),
-              }]
-              : emptyArray),
-            ...(query.sort ? [{ $sort: query.sort }] : emptyArray),
-            ...(query.offset ? [{ $skip: query.offset }] : emptyArray),
-            ...(query.limit ? [{ $limit: query.limit }] : emptyArray),
-            ...(query.project ? [{ $project: query.project }] : emptyArray),
+            ...paginatedAggregation(query),
           ]);
 
           return Response.json(
