@@ -3,6 +3,10 @@ export class Response extends globalThis.Response {
     return new Response(data ?? "Ok", init ?? { status: 200 });
   }
 
+  static accepted(data?: BodyInit, init?: ResponseInit) {
+    return new Response(data ?? "Accepted", init ?? { status: 202 });
+  }
+
   static created(data: unknown, init?: ResponseInit) {
     return Response.json(data, init ?? { status: 201 });
   }

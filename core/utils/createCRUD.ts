@@ -410,6 +410,8 @@ export const clientValueSchema = z.union([
   z.string(),
 ]).meta({ tsLabel: "TFilterValue" });
 
+export const $clientValue = clientValueSchema;
+
 export const expressionSchema = z.object({
   $exists: clientValueSchema,
   $eq: clientValueSchema,
@@ -425,18 +427,26 @@ export const expressionSchema = z.object({
   $all: z.array(clientValueSchema),
 }).partial().meta({ tsLabel: "TFilterExpression" });
 
+export const $expression = expressionSchema;
+
 export const basicFilterSchema = z.record(
   z.string(),
   z.union([z.object({ $not: expressionSchema }), expressionSchema]),
 ).meta({ tsLabel: "TBasicFilter" });
+
+export const $basicFilter = basicFilterSchema;
 
 export const multiFilterSchema = z.object({
   $and: z.array(basicFilterSchema),
   $or: z.array(basicFilterSchema),
 }).partial().meta({ tsLabel: "TMultiFilters" });
 
+export const $multiFilter = multiFilterSchema;
+
 export const filtersSchema = z.union([basicFilterSchema, multiFilterSchema])
   .meta({ tsLabel: "TFilters" });
+
+export const $filter = filtersSchema;
 
 export const paginationSchema = z.object(
   {
@@ -469,6 +479,8 @@ export const paginationSchema = z.object(
       ),
   },
 ).meta({ tsLabel: "TPagination" });
+
+export const $pagination = paginationSchema;
 
 export const normalizeFilterExpression = (
   value?: string | number | boolean | z.output<typeof clientValueSchema>,
