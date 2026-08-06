@@ -12,6 +12,7 @@ import {
 } from "mongodb";
 import { Response } from "@/core/http/response.ts";
 import { mongodb } from "@/database.ts";
+import { deepObjectToFlatten } from "@/core/utils/objectUtils.ts";
 
 export type TCrudDetails<T extends z.ZodObject> = {
   router: TRouter & {
@@ -553,8 +554,9 @@ export const normalizeFilters = (
 
 export const testFilters = <T extends Record<string, unknown>>(
   filters: z.output<typeof filtersSchema> | string,
-  data: T,
+  deepData: T,
 ) => {
+  const data = deepObjectToFlatten(deepData);
   const validatedFilters = typeof filters === "string"
     ? JSON.parse(filters) as z.output<typeof filtersSchema>
     : filters;
