@@ -399,6 +399,7 @@ export const clientValueSchema = z.union([
         "boolean",
         "objectId",
         "date",
+        "milliseconds",
         "regex",
         "null",
       ],
@@ -493,6 +494,9 @@ export const normalizeFilterExpression = (
 
       case "date":
         return value.value === "now" ? new Date() : new Date(value.value);
+
+      case "milliseconds":
+        return new Date(Date.now() + (+value.value));
 
       case "number":
         return Number(value.value);
