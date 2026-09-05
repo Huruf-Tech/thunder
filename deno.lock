@@ -29,6 +29,7 @@
     "npm:@types/picomatch@*": "4.0.3",
     "npm:@types/qs@*": "6.15.0",
     "npm:@types/qs@^6.14.0": "6.15.0",
+    "npm:ai@^7.0.84": "7.0.84_zod@4.3.6",
     "npm:ejs@^4.0.1": "4.0.1",
     "npm:handlebars@^4.7.9": "4.7.9",
     "npm:mongodb@7": "7.1.1",
@@ -140,6 +141,32 @@
     }
   },
   "npm": {
+    "@ai-sdk/gateway@4.0.68_zod@4.3.6": {
+      "integrity": "sha512-XKvZv6HFoMOWK64zXMaQatk4SxBzBDkGg7enXPWsCkxqPP4zDhFewOoBKasf3FPnZP9ceE+Yj3BgW925blAWtw==",
+      "dependencies": [
+        "@ai-sdk/provider",
+        "@ai-sdk/provider-utils",
+        "@vercel/oidc",
+        "zod"
+      ]
+    },
+    "@ai-sdk/provider-utils@5.0.33_zod@4.3.6": {
+      "integrity": "sha512-TfjJqJmRsQyxAlb+3hGmP1o1xLUIT79yhOgtJuTF4hqsB37IC3CufGsuFhU04EeTOg7R9iptQ6Bzm0MW0n/c3g==",
+      "dependencies": [
+        "@ai-sdk/provider",
+        "@standard-schema/spec",
+        "@workflow/serde",
+        "eventsource-parser",
+        "undici",
+        "zod"
+      ]
+    },
+    "@ai-sdk/provider@4.0.8": {
+      "integrity": "sha512-aWO7iwhFUGf347tCwNGggggfmZigaSu7TF739IZSrWWABUp7zkb4Cr3fMqvBe5EIS7ABJJu3Cadn0g/zs1G0QQ==",
+      "dependencies": [
+        "json-schema"
+      ]
+    },
     "@mongodb-js/saslprep@1.4.8": {
       "integrity": "sha512-kpjr2jy2w71w0oqAMI8oibBmiF9lXxWkEQs5gMkW4hVE48bsqINGLxnCSYW62ck/NHXJQpQEfA9WlJ1sY0eqBg==",
       "dependencies": [
@@ -152,6 +179,9 @@
         "typescript",
         "zod"
       ]
+    },
+    "@standard-schema/spec@1.1.0": {
+      "integrity": "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="
     },
     "@types/ejs@3.1.5": {
       "integrity": "sha512-nv+GSx77ZtXiJzwKdsASqi+YQ5Z7vwHsTP0JY2SiQgjGckkBRKZnk8nIM+7oUZ1VCtuTz0+By4qVR7fqzp/Dfg=="
@@ -169,6 +199,21 @@
       "integrity": "sha512-N8WXpbE6Wgri7KUSvrmQcqrMllKZ9uxkYWMt+mCSGwNc0Hsw9VQTW7ApqI4XNrx6/SaM2QQJCzMPDEXE058s+Q==",
       "dependencies": [
         "@types/webidl-conversions"
+      ]
+    },
+    "@vercel/oidc@3.2.0": {
+      "integrity": "sha512-UycprH3T6n3jH0k44NHMa7pnFHGu/N05MjojYr+Mc6I7obkoLIJujSWwin1pCvdy/eOxrI/l3uDLQsmcrOb4ug=="
+    },
+    "@workflow/serde@4.1.0": {
+      "integrity": "sha512-pav4F2BoirECWR7Nf1TKt+2eETcBj7jj4cBefQ8VXQCA6NPkaKeLfj/zMgi+3zYV5ZIBT4GuUiphsj0/b9hPQQ=="
+    },
+    "ai@7.0.84_zod@4.3.6": {
+      "integrity": "sha512-znHNBWADOy79k8EK7636kDm5LmnjF4tMzegC2TfmlLDobDZbs0z0OXD2sxtH3eDTp5Re+pJQESvjinWJ6+kadQ==",
+      "dependencies": [
+        "@ai-sdk/gateway",
+        "@ai-sdk/provider",
+        "@ai-sdk/provider-utils",
+        "zod"
       ]
     },
     "async@3.2.6": {
@@ -226,6 +271,9 @@
       "dependencies": [
         "es-errors"
       ]
+    },
+    "eventsource-parser@3.1.1": {
+      "integrity": "sha512-EKN1vKAMcZ8MlYMpaNuxN6R9yakzH6uajHcHVTqWJzvu5pWw9DyhbP35HH8MVBQ+dZjAfDxk+A8NiR9KWaXiyQ=="
     },
     "filelist@1.0.6": {
       "integrity": "sha512-5giy2PkLYY1cP39p17Ech+2xlpTRL9HLspOfEgm0L6CwBXBTgsK5ou0JtzYuepxkaQ/tvhCFIJ5uXo0OrM2DxA==",
@@ -291,6 +339,9 @@
         "picocolors"
       ],
       "bin": true
+    },
+    "json-schema@0.4.0": {
+      "integrity": "sha512-es94M3nTIfsEPisRafak+HDLfHXnKBhV3vU5eqPcS3flIWqcxJWgXHXiey3YrpaNsanY5ei1VoYEbOzijuq9BA=="
     },
     "math-intrinsics@1.1.0": {
       "integrity": "sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g=="
@@ -408,6 +459,9 @@
       "integrity": "sha512-v3Xu+yuwBXisp6QYTcH4UbH+xYJXqnq2m/LtQVWKWzYc1iehYnLixoQDN9FH6/j9/oybfd6W9Ghwkl8+UMKTKQ==",
       "bin": true
     },
+    "undici@7.29.0": {
+      "integrity": "sha512-IDxfleLmmbSskfWSUATiN1nfn2rDuvnMOqb5CWR92iIfojA0Ud+ulOAAEQ57LPr9rWmsreUyf5lwyao+7GNNVw=="
+    },
     "webidl-conversions@7.0.0": {
       "integrity": "sha512-VwddBukDzu71offAQR975unBIGqfKZpM+8ZX6ySk8nYhVoo5CYaZyzt3YBvYtRtO+aoGlqxPg/B87NGVZ/fu6g=="
     },
@@ -443,6 +497,7 @@
       "npm:@oridune/zod-to-ts@^2.0.1",
       "npm:@types/ejs@^3.1.5",
       "npm:@types/qs@^6.14.0",
+      "npm:ai@^7.0.84",
       "npm:ejs@^4.0.1",
       "npm:handlebars@^4.7.9",
       "npm:mongodb@7",

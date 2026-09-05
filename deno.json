@@ -26,7 +26,8 @@
     "generate:openapi": "deno run -A ./core/scripts/generateOpenAPI.ts",
     "generate:sdk": "deno run -A ./core/scripts/generateSDK.ts",
     "generate:sdk:plugin": "deno run -A ./core/scripts/generateSDKPlugin.ts",
-    "generate:app": "deno run -A ./core/scripts/generateApp.ts"
+    "generate:app": "deno run -A ./core/scripts/generateApp.ts",
+    "chat": "deno run -A --env-file=.env ./core/scripts/chat.ts"
   },
   "imports": {
     "@/": "./",
@@ -40,6 +41,7 @@
     "@types/ejs": "npm:@types/ejs@^3.1.5",
     "@types/qs": "npm:@types/qs@^6.14.0",
     "@oridune/zod-to-ts": "npm:@oridune/zod-to-ts@^2.0.1",
+    "ai": "npm:ai@^7.0.84",
     "ejs": "npm:ejs@^4.0.1",
     "handlebars": "npm:handlebars@^4.7.9",
     "mongodb": "npm:mongodb@^7.0.0",

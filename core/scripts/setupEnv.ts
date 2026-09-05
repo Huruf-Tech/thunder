@@ -90,4 +90,6 @@ export async function setupEnvironment(): Promise<void> {
 
 if (import.meta.main) {
   await setupEnvironment();
+
+  Deno.exit();
 }
