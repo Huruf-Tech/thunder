@@ -1,0 +1,1 @@
+["Currency values must always be stored in lowercase (e.g., \"usd\" instead of \"USD\") in the database schemas."]

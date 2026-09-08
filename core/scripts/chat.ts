@@ -1,15 +1,26 @@
-// import { parseArgs as parse } from "@std/cli/parse-args";
+import { parseArgs as parse } from "@std/cli/parse-args";
 import { exists } from "@std/fs";
 import { join } from "@std/path/join";
 import { Input, Select } from "@cliffy/prompt";
 
 import { session } from "@/core/agent/session.ts";
-import { planning } from "@/core/agent/planning.ts";
+import { planning, reviewPlan } from "@/core/agent/planning.ts";
 
-export const chat = async () => {
+export const chat = async (opts?: { reviewPlan?: boolean }) => {
   const planPath = join(Deno.cwd(), "./PLAN.md");
 
   if (await exists(planPath)) {
+    if (opts?.reviewPlan) {
+      const prompt = await Input.prompt("What do you want to change?");
+
+      const planMd = await reviewPlan(
+        await Deno.readTextFile(planPath),
+        prompt,
+      );
+
+      await Deno.writeTextFile(planPath, planMd);
+    }
+
     await session({ projectPath: Deno.cwd() });
   } else {
     const todo = await Select.prompt({
@@ -44,9 +55,9 @@ export const chat = async () => {
 };
 
 if (import.meta.main) {
-  //   const {} = parse(Deno.args);
+  const { reviewPlan } = parse(Deno.args);
 
-  await chat();
+  await chat({ reviewPlan });
 
   Deno.exit();
 }

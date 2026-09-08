@@ -1,6 +1,7 @@
 {
   "cSpell.words": [
     "bullmq",
+    "chunkable",
     "deinit",
     "Huruf",
     "ignorecase",
@@ -12,7 +13,8 @@
     "Sendgrid",
     "surrealdb",
     "treeify",
-    "unrepresentable"
+    "unrepresentable",
+    "vectra"
   ],
   "deno.enable": true
 }
