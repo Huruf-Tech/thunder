@@ -1,6 +1,8 @@
 import { stepCountIs, streamText } from "ai";
 
 import models from "@/ai-provider.ts";
+import { isAnthropicModel } from "@/core/agent/utils/isAnthropicModel.ts";
+
 import { promptTool } from "@/core/agent/tools/prompt.ts";
 import { queryDocsTool } from "@/core/agent/tools/queryDocs.ts";
 import { logAgentStream } from "@/core/agent/utils/agentStream.ts";
@@ -36,8 +38,9 @@ export const planning = async (
   projectName: string,
   projectDescription: string,
 ) => {
+  const model = models.architect;
   const result = streamText({
-    model: models.architect,
+    model,
 
     instructions: basePlanInstructions,
 
@@ -48,10 +51,26 @@ export const planning = async (
       getMemories: getMemoriesTool,
     },
 
-    prompt: `
-      Project Name: ${projectName}
-      Project Description: ${projectDescription}
-    `,
+    messages: [
+      {
+        role: "user",
+        content: `
+        Project Name: ${projectName}
+        Project Description: ${projectDescription}
+        `,
+        ...(isAnthropicModel(model)
+          ? {
+            providerOptions: {
+              anthropic: {
+                cacheControl: {
+                  type: "ephemeral",
+                },
+              },
+            },
+          }
+          : {}),
+      },
+    ],
 
     stopWhen: stepCountIs(10),
   });
@@ -65,8 +84,9 @@ export const reviewPlan = async (
   plan: string,
   prompt: string,
 ) => {
+  const model = models.architect;
   const result = streamText({
-    model: models.architect,
+    model,
 
     instructions: `
     ${basePlanInstructions}
@@ -82,7 +102,23 @@ export const reviewPlan = async (
       getMemories: getMemoriesTool,
     },
 
-    prompt,
+    messages: [
+      {
+        role: "user",
+        content: prompt,
+        ...(isAnthropicModel(model)
+          ? {
+            providerOptions: {
+              anthropic: {
+                cacheControl: {
+                  type: "ephemeral",
+                },
+              },
+            },
+          }
+          : {}),
+      },
+    ],
 
     stopWhen: stepCountIs(10),
   });
