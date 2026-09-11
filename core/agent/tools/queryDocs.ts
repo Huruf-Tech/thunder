@@ -66,6 +66,10 @@ export const queryDocsTool = tool({
             readTextFile: readTextFileTool,
             listPlugins: listPluginsTool,
           },
+          timeout: {
+            stepMs: 180_000,
+            chunkMs: 60_000,
+          },
           prompt:
             "Go ahead read: llms-full.txt, than read all the reference files found in llms-full.txt (Like: llms.txt, llms.extension.txt and others etc) and give me the json",
 

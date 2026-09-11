@@ -2,7 +2,7 @@ import { join } from "@std/path/join";
 import { Input } from "@cliffy/prompt";
 import { stepCountIs, streamText } from "ai";
 import models from "@/ai-provider.ts";
-import { logAgentStream } from "@/core/agent/utils/agentStream.ts";
+// import { logAgentStream } from "@/core/agent/utils/agentStream.ts";
 import { promptTool } from "@/core/agent/tools/prompt.ts";
 import { queryDocsTool } from "@/core/agent/tools/queryDocs.ts";
 import { getMemoriesTool, rememberTool } from "@/core/agent/tools/remember.ts";
@@ -36,10 +36,10 @@ Follow the USER REQUEST using PROJECT PLAN as implementation context. The plan m
 * Use Ponytail skill practices if possible, it is useful for reducing unnecessary code.
 * Avoid speculative features, unnecessary abstractions, duplicate logic, verbose comments, and unrelated refactors.
 * Read/search only what is needed and avoid rediscovering information already available in context or memory.
-* Occasionally report your progress back to the user using the progress tool. (Strictly)
-* Split the task into chunks and write files one by one so that the user can review them as you are writing.
+* Use the progress tool only at meaningful milestones or when work will continue for several steps. Do not call it after every tool or file change.
+* Group related file reads/writes when practical. Do not artificially split simple work into separate steps.
 * Always run the commands based on the system details provided below. (For example don't run the linux commands on windows that don't work)
-* If a command fails, try an alternative command and continue the work.
+* If a command fails, inspect the error and fix its root cause. Retry only when there is a justified corrective action. Do not repeatedly try equivalent commands.
 
 ## Safety
 
@@ -114,6 +114,11 @@ export const session = async (
       runCMD: runCMDTool,
     },
 
+    timeout: {
+      stepMs: 180_000,
+      chunkMs: 60_000,
+    },
+
     messages: [
       {
         role: "user",
@@ -133,12 +138,46 @@ export const session = async (
     ],
 
     stopWhen: stepCountIs(1000),
+
+    experimental_onStepStart({ stepNumber }) {
+      console.log(`[AI] step ${stepNumber} started`);
+    },
+
+    onStepFinish({ stepNumber, finishReason, usage }) {
+      console.log(`[AI] step ${stepNumber} finished`, {
+        finishReason,
+        usage,
+      });
+    },
+
+    experimental_onToolCallStart({ toolCall }) {
+      console.log(`[AI] tool started: ${toolCall.toolName}`, toolCall.input);
+    },
+
+    experimental_onToolCallFinish({ toolCall, toolExecutionMs }) {
+      console.log(`[AI] tool finished: ${toolCall.toolName}`, {
+        toolExecutionMs,
+      });
+    },
+
+    onFinish({ finishReason, usage }) {
+      console.log("[AI] agent finished", {
+        finishReason,
+        usage,
+      });
+    },
+
+    onError({ error }) {
+      console.error("[AI] error:", error);
+    },
   });
 
-  await logAgentStream(result).catch(async (error) => {
-    await Deno.writeTextFile(
-      join(Deno.cwd(), "./ai-agent-error.txt"),
-      String(error),
-    );
-  });
+  await result.text;
+
+  // await logAgentStream(result).catch(async (error) => {
+  //   await Deno.writeTextFile(
+  //     join(Deno.cwd(), "./ai-agent-error.txt"),
+  //     String(error),
+  //   );
+  // });
 };
