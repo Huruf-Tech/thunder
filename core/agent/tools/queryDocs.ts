@@ -115,6 +115,10 @@ export const queryDocsTool = tool({
         const { values, embeddings } = await embedMany({
           model: models.embedder,
           values: JSON.parse(result.text) as string[],
+        }).catch((error) => {
+          console.error(error);
+
+          throw error;
         });
 
         await vectra.createIndex();
