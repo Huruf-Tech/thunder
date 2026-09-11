@@ -22,7 +22,6 @@ export async function logAgentStream(result: StreamTextResult<any, any, any>) {
         break;
 
       case "tool-result":
-        console.info("Working on the next step...");
         break;
 
       case "text-start":
@@ -35,7 +34,6 @@ export async function logAgentStream(result: StreamTextResult<any, any, any>) {
       }
 
       case "finish":
-        console.info("Project plan generated");
         break;
     }
   }

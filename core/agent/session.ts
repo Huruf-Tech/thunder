@@ -126,7 +126,7 @@ export const session = async (
       },
     ],
 
-    stopWhen: stepCountIs(10),
+    stopWhen: stepCountIs(1000),
   });
 
   await logAgentStream(result);
