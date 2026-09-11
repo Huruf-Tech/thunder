@@ -47,6 +47,10 @@ export const runCMDTool = tool({
       results.push(await run(cmd));
     }
 
+    console.log("Results:", results);
+
+    await Confirm.prompt("Continue...");
+
     return {
       results,
     };
