@@ -14,15 +14,6 @@ const basePlanInstructions = `
     - Frontend: React Typescript with Tailwind CSS and ShadCN UI.
     - Database: MongoDB with Direct Mongodb js driver.
 
-    The final plan must contain:
-
-    ## Functional Requirements
-    ## Non-Functional Requirements
-    ## User Stories
-    ## Use Cases
-    ## Necessary routes
-    ## Database schema
-
     Rules:
     1. Keep in mind that the thunder framework is already initialized and you are working on top of it. You do not need to plan for the initialization of the framework.
     2. Produce an implementation-ready project plan from the supplied project name and description.
@@ -32,6 +23,15 @@ const basePlanInstructions = `
     6. Ask as few clarification questions as necessary.
     7. After receiving a tool result, continue your analysis immediately.
     8. Once sufficient information is available, output the complete project plan as Markdown. Do not include any additional text. Do not call the prompt tool after the plan is ready.
+
+    The final plan must contain:
+
+    ## Functional Requirements
+    ## Non-Functional Requirements
+    ## User Stories
+    ## Use Cases
+    ## Necessary routes
+    ## Database schema
     `;
 
 export const planning = async (
@@ -112,6 +112,10 @@ export const planning = async (
     },
   });
 
+  const text = await result.text;
+
+  console.log("Plan text:", text);
+
   // await logAgentStream(result).catch(async (error) => {
   //   await Deno.writeTextFile(
   //     join(Deno.cwd(), "./ai-agent-error.txt"),
@@ -119,7 +123,7 @@ export const planning = async (
   //   );
   // });
 
-  return await result.text;
+  return text;
 };
 
 export const reviewPlan = async (
