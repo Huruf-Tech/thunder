@@ -1,6 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { join } from "@std/path/join";
+import { dirname } from "@std/path/dirname";
 
 let rememberQueue = Promise.resolve();
 const memoryPath = join(Deno.cwd(), ".ai/memories.json");
@@ -14,7 +15,7 @@ export const rememberTool = tool({
 
   execute: async ({ content }) => {
     const operation = rememberQueue.then(async () => {
-      const rawMemories = await Deno.readTextFile(memoryPath);
+      const rawMemories = await Deno.readTextFile(memoryPath).catch(() => "[]");
       const memories = JSON.parse(rawMemories) as string[];
 
       memories.push(content);
@@ -22,6 +23,10 @@ export const rememberTool = tool({
       const tmpPath = `${memoryPath}.${crypto.randomUUID()}.tmp`;
 
       try {
+        await Deno.mkdir(dirname(memoryPath), { recursive: true }).catch(
+          console.error,
+        );
+
         await Deno.writeTextFile(
           tmpPath,
           JSON.stringify(memories),
