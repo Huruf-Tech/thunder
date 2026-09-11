@@ -36,7 +36,8 @@ Follow the USER REQUEST using PROJECT PLAN as implementation context. The plan m
 * Use Ponytail skill practices if possible, it is useful for reducing unnecessary code.
 * Avoid speculative features, unnecessary abstractions, duplicate logic, verbose comments, and unrelated refactors.
 * Read/search only what is needed and avoid rediscovering information already available in context or memory.
-* Occasionally report your progress back to the user using the progress tool.
+* Occasionally report your progress back to the user using the progress tool. (Strictly)
+* Split the task into chunks and write files one by one so that the user can review them as you are writing.
 * Always run the commands based on the system details provided below. (For example don't run the linux commands on windows that don't work)
 * If a command fails, try an alternative command and continue the work.
 
