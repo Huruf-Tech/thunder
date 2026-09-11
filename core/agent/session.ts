@@ -13,6 +13,7 @@ import { listPluginsTool } from "@/core/agent/tools/listPlugins.ts";
 import { addPluginTool } from "@/core/agent/tools/addPlugin.ts";
 import { runCMDTool } from "@/core/agent/tools/runCMD.ts";
 import { getSystemDetails } from "@/core/agent/utils/systemDetails.ts";
+import { progressTool } from "@/core/agent/tools/progress.ts";
 
 const basePlanInstructions = `
 You are an autonomous software engineering agent working on a Thunder framework project.
@@ -35,6 +36,7 @@ Follow the USER REQUEST using PROJECT PLAN as implementation context. The plan m
 * Use Ponytail skill practices if possible, it is useful for reducing unnecessary code.
 * Avoid speculative features, unnecessary abstractions, duplicate logic, verbose comments, and unrelated refactors.
 * Read/search only what is needed and avoid rediscovering information already available in context or memory.
+* Occasionally report your progress back to the user using the progress tool.
 
 ## Safety
 
@@ -97,6 +99,7 @@ export const session = async (
     Project Plan: ${plan}`,
 
     tools: {
+      progress: progressTool,
       prompt: promptTool,
       queryDocs: queryDocsTool,
       keepInMind: rememberTool,
