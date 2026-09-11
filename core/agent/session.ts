@@ -37,6 +37,7 @@ Follow the USER REQUEST using PROJECT PLAN as implementation context. The plan m
 * Avoid speculative features, unnecessary abstractions, duplicate logic, verbose comments, and unrelated refactors.
 * Read/search only what is needed and avoid rediscovering information already available in context or memory.
 * Occasionally report your progress back to the user using the progress tool.
+* Always run the commands based on the system details provided below. (For example don't run the linux commands on windows that don't work)
 
 ## Safety
 
