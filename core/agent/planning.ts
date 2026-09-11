@@ -72,7 +72,7 @@ export const planning = async (
       },
     ],
 
-    stopWhen: stepCountIs(10),
+    stopWhen: stepCountIs(100),
   });
 
   await logAgentStream(result);

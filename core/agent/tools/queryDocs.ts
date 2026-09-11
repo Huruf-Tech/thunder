@@ -69,7 +69,7 @@ export const queryDocsTool = tool({
           prompt:
             "Go ahead read: llms-full.txt, than read all the reference files found in llms-full.txt (Like: llms.txt, llms.extension.txt and others etc) and give me the json",
 
-          stopWhen: stepCountIs(10),
+          stopWhen: stepCountIs(100),
         }).catch((error) => {
           console.error(error);
           throw error;
