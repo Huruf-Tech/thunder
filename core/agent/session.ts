@@ -133,5 +133,10 @@ export const session = async (
     stopWhen: stepCountIs(1000),
   });
 
-  await logAgentStream(result);
+  await logAgentStream(result).catch(async (error) => {
+    await Deno.writeTextFile(
+      join(Deno.cwd(), "./ai-agent-error.txt"),
+      String(error),
+    );
+  });
 };

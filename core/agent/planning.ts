@@ -1,3 +1,4 @@
+import { join } from "@std/path/join";
 import { stepCountIs, streamText } from "ai";
 
 import models from "@/ai-provider.ts";
@@ -75,7 +76,12 @@ export const planning = async (
     stopWhen: stepCountIs(100),
   });
 
-  await logAgentStream(result);
+  await logAgentStream(result).catch(async (error) => {
+    await Deno.writeTextFile(
+      join(Deno.cwd(), "./ai-agent-error.txt"),
+      String(error),
+    );
+  });
 
   return await result.text;
 };
