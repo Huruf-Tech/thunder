@@ -22,6 +22,6 @@ export default {
   // helper: anthropic("claude-sonnet-5"),
   architect: openai("gpt-6-astra"),
   engineer: openai("gpt-5.6-luna"),
-  helper: openai("gpt-5-codex"),
+  helper: openai("gpt-5.6-luna"),
   embedder: google.embedding("gemini-embedding-001"),
 } satisfies ModelProvider;
