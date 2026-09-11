@@ -1,12 +1,133 @@
 import { join } from "@std/path/join";
+import { Input } from "@cliffy/prompt";
+import { stepCountIs, streamText } from "ai";
+import models from "@/ai-provider.ts";
+import { logAgentStream } from "@/core/agent/utils/agentStream.ts";
+import { promptTool } from "@/core/agent/tools/prompt.ts";
+import { queryDocsTool } from "@/core/agent/tools/queryDocs.ts";
+import { getMemoriesTool, rememberTool } from "@/core/agent/tools/remember.ts";
+import { isAnthropicModel } from "@/core/agent/utils/isAnthropicModel.ts";
+import { readFileTool } from "@/core/agent/tools/readFile.ts";
+import { writeFileTool } from "@/core/agent/tools/writeFile.ts";
+import { listPluginsTool } from "@/core/agent/tools/listPlugins.ts";
+import { addPluginTool } from "@/core/agent/tools/addPlugin.ts";
+import { runCMDTool } from "@/core/agent/tools/runCMD.ts";
+import { getSystemDetails } from "@/core/agent/utils/systemDetails.ts";
+
+const basePlanInstructions = `
+You are an autonomous software engineering agent working on a Thunder framework project.
+
+Follow the USER REQUEST using PROJECT PLAN as implementation context. The plan may describe the whole project, already-implemented work, or only relevant architecture. Implement only what the user currently asks for. If the user asks to implement the entire plan, complete the full plan.
+
+## Before Coding
+
+* Inspect the existing project before making changes.
+* Always create/switch to a dedicated git branch before implementation. Preserve all existing/uncommitted work.
+* Use Thunder documentation for Thunder-specific APIs, conventions, configuration, and commands. Never guess framework behavior.
+
+## Implementation
+
+* Follow the user's requested scope and use PROJECT PLAN to guide architecture and requirements.
+* Reuse existing code, utilities, patterns, and dependencies where appropriate.
+* Prefer Thunder/native functionality over custom abstractions or extra dependencies.
+* Make the smallest correct changes.
+* Keep code simple, typed, clean, and concise. Prefer single-line expressions when they remain readable.
+* Use Ponytail skill practices if possible, it is useful for reducing unnecessary code.
+* Avoid speculative features, unnecessary abstractions, duplicate logic, verbose comments, and unrelated refactors.
+* Read/search only what is needed and avoid rediscovering information already available in context or memory.
+
+## Safety
+
+Never run destructive or irreversible commands.
+
+Do not:
+
+* discard or overwrite user changes;
+* force-push or rewrite git history;
+* delete branches, databases, volumes, infrastructure, or important files;
+* run destructive migrations;
+* use \`sudo\` or broad permission/ownership changes;
+* expose, print, commit, or overwrite secrets.
+
+If a requested operation is destructive, use a safe alternative or report the blocker.
+
+## Validation
+
+After changes, run the relevant formatter, type checker, tests, build, or Thunder validation.
+
+When something fails, inspect the error, fix the root cause, and validate again. Do not hide failures with unsafe casts, ignored errors, disabled checks, or removed tests unless explicitly required.
+
+Before finishing, confirm the requested work is complete and return only a concise summary of:
+
+* what changed;
+* important files changed;
+* validation performed;
+* unresolved blockers, if any.
+`;
 
 export const session = async (
-  options: { projectPath: string; planMd?: string },
+  options: {
+    projectPath: string;
+    planMd?: string;
+    prompt?: string;
+  },
 ) => {
   const { projectPath, planMd: newPlanMd } = options;
 
-  const _plan = newPlanMd ??
+  const plan = newPlanMd ??
     await Deno.readTextFile(join(projectPath, "./PLAN.md"));
+  const prompt = options.prompt ??
+    await Input.prompt("What do you want me to do for you?");
 
-  //! Implement the session logic here, such as loading the project plan, initializing the session, etc.
+  const model = models.engineer;
+  const result = streamText({
+    model,
+
+    instructions: `
+    ${basePlanInstructions}    
+
+    ## SYSTEM DETAILS
+
+    ${JSON.stringify(getSystemDetails())}
+
+    ## PROJECT PLAN
+
+    ${plan}
+
+    Project Plan: ${plan}`,
+
+    tools: {
+      prompt: promptTool,
+      queryDocs: queryDocsTool,
+      keepInMind: rememberTool,
+      getMemories: getMemoriesTool,
+      readFile: readFileTool,
+      writeFile: writeFileTool,
+      listPlugins: listPluginsTool,
+      addPlugin: addPluginTool,
+      runCMD: runCMDTool,
+    },
+
+    messages: [
+      {
+        role: "user",
+        content: prompt,
+        ...(isAnthropicModel(model)
+          ? {
+            providerOptions: {
+              anthropic: {
+                cacheControl: {
+                  type: "ephemeral",
+                },
+              },
+            },
+          }
+          : {}),
+      },
+    ],
+
+    stopWhen: stepCountIs(10),
+  });
+
+  await logAgentStream(result);
 };

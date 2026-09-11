@@ -20,13 +20,12 @@ export const chat = async (opts?: { reviewPlan?: boolean }) => {
 
       await Deno.writeTextFile(planPath, planMd);
     }
-
-    await session({ projectPath: Deno.cwd() });
   } else {
     const todo = await Select.prompt({
       message: "How would you like to start?",
       options: [
         { name: "Blank (Start a new project planning)", value: "plan" },
+        { name: "No plan (Start without a plan)", value: "no-plan" },
         {
           name:
             "Review the project for context and understanding (Build on top of the existing project)",
@@ -45,13 +44,23 @@ export const chat = async (opts?: { reviewPlan?: boolean }) => {
 
       await Deno.writeTextFile(planPath, planMd);
 
-      await session({ projectPath: Deno.cwd(), planMd });
-    } else {
+      await session({
+        projectPath: Deno.cwd(),
+        planMd,
+        prompt: "Start the implementation according to the plan",
+      });
+
+      return;
+    }
+
+    if (todo === "review") {
       //! Handle the case where the user wants to review the existing project
 
       throw new Error("Review functionality is not implemented yet.");
     }
   }
+
+  await session({ projectPath: Deno.cwd() });
 };
 
 if (import.meta.main) {
