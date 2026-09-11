@@ -25,7 +25,7 @@ export const runCMDTool = tool({
     const run = async (cmd: string[]) => {
       try {
         const confirm = await Confirm.prompt(
-          `Do you want to allow executing the command: ${cmd.join(" ")}`,
+          `Do you want to allow executing the command: "${cmd.join(" ")}"`,
         );
 
         if (!confirm) throw new Error("User denied to execute the command!");
@@ -45,6 +45,10 @@ export const runCMDTool = tool({
     for (const cmd of cmds) {
       results.push(await run(cmd));
     }
+
+    console.log(results);
+
+    await Confirm.prompt("Continue?");
 
     return {
       results,
