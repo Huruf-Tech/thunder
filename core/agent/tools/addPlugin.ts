@@ -11,19 +11,22 @@ export const addPluginTool = tool({
   }),
   outputSchema: z.object({
     success: z.boolean().describe("If the plugin was added successfully"),
-    error: z.unknown().optional().describe("If unable to add a plugin"),
+    error: z.string().optional().describe("If unable to add a plugin"),
   }),
   execute: async ({ name }) => {
     try {
+      console.info("Adding plugin:", name);
+
       await addPlugin({
         name,
         setup: true,
         prompt: false,
+        dryRun: true,
       });
 
       return { success: true };
     } catch (error) {
-      return { success: false, error };
+      return { success: false, error: String(error) };
     }
   },
 });

@@ -129,6 +129,7 @@ export const addPlugin = async (options: {
   name: string;
   setup?: boolean | EnvType[];
   prompt?: boolean;
+  dryRun?: boolean;
 }) => {
   const Options = z.object({
     name: z.optional(z.string()),
@@ -142,6 +143,8 @@ export const addPlugin = async (options: {
   }
 
   if (!Options.name) throw new Error("Plugin name is required");
+
+  if (options.dryRun) return;
 
   const resolvedPluginName = resolvePluginName(Options.name);
   const TempPath = join(Deno.cwd(), "_temp", resolvedPluginName);
