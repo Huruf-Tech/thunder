@@ -1,1 +1,0 @@
-["Currency values must always be stored in lowercase (e.g., \"usd\" instead of \"USD\") in the database schemas.","Barber appointment app is multi-tenant (supports multiple barbershops) with three user roles: Customer (books appointments), Barber (manages schedule/services), and Admin (manages shop, barbers, settings)."]

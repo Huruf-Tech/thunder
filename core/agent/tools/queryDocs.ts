@@ -51,7 +51,7 @@ export const queryDocsTool = tool({
             If a doc references another relevant file, read it too.
             Each chunk must be a complete thought or idea.
             Do include the provided example code snippets.
-            Max 1000 words per chunk.
+            Max 200 words per chunk. (Strictly)
 
             Return ONLY valid JSON array of chunk string (For example your response should look like):
 
