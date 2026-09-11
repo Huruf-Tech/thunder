@@ -15,7 +15,7 @@ import { runCMDTool } from "@/core/agent/tools/runCMD.ts";
 import { getSystemDetails } from "@/core/agent/utils/systemDetails.ts";
 import { progressTool } from "@/core/agent/tools/progress.ts";
 
-const basePlanInstructions = `
+const baseInstructions = `
 You are an autonomous software engineering agent working on a Thunder framework project.
 
 Follow the USER REQUEST using PROJECT PLAN as implementation context. The plan may describe the whole project, already-implemented work, or only relevant architecture. Implement only what the user currently asks for. If the user asks to implement the entire plan, complete the full plan.
@@ -89,7 +89,7 @@ export const session = async (
     model,
 
     instructions: `
-    ${basePlanInstructions}    
+    ${baseInstructions}    
 
     ## SYSTEM DETAILS
 

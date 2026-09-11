@@ -60,7 +60,7 @@ export const queryDocsTool = tool({
                 "..."
             ]
 
-            **Strictly follow this**: No Markdown fences, No explanations, No comments, No headings, or No extra text. Each item must contain only content property. The entire response must be directly parsable with JSON.parse(). Return [] if there is nothing to chunk.
+            **Strictly follow this**: No Markdown fences, No explanations, No comments, No headings, or No extra text. Each item must be a string. The entire response must be directly parsable with JSON.parse(). Return [] if there is nothing to chunk.
             `,
           tools: {
             readTextFile: readTextFileTool,
