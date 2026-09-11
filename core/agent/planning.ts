@@ -5,7 +5,7 @@ import { isAnthropicModel } from "@/core/agent/utils/isAnthropicModel.ts";
 
 import { promptTool } from "@/core/agent/tools/prompt.ts";
 import { queryDocsTool } from "@/core/agent/tools/queryDocs.ts";
-import { logAgentStream } from "@/core/agent/utils/agentStream.ts";
+// import { logAgentStream } from "@/core/agent/utils/agentStream.ts";
 import { getMemoriesTool, rememberTool } from "@/core/agent/tools/remember.ts";
 
 const basePlanInstructions = `
@@ -112,10 +112,6 @@ export const planning = async (
     },
   });
 
-  const text = await result.text;
-
-  console.log("Plan text:", text);
-
   // await logAgentStream(result).catch(async (error) => {
   //   await Deno.writeTextFile(
   //     join(Deno.cwd(), "./ai-agent-error.txt"),
@@ -123,7 +119,7 @@ export const planning = async (
   //   );
   // });
 
-  return text;
+  return await result.text;
 };
 
 export const reviewPlan = async (
@@ -206,7 +202,7 @@ export const reviewPlan = async (
     },
   });
 
-  await logAgentStream(result);
+  // await logAgentStream(result);
 
   return await result.text;
 };

@@ -18,6 +18,10 @@ export const chat = async (opts?: { reviewPlan?: boolean }) => {
         prompt,
       );
 
+      if (!planMd) {
+        throw new Error("Something went wrong while creating the plan!");
+      }
+
       await Deno.writeTextFile(planPath, planMd);
     }
   } else {
@@ -41,6 +45,10 @@ export const chat = async (opts?: { reviewPlan?: boolean }) => {
       );
 
       const planMd = await planning(projectName, projectDescription);
+
+      if (!planMd) {
+        throw new Error("Something went wrong while creating the plan!");
+      }
 
       await Deno.writeTextFile(planPath, planMd);
 
