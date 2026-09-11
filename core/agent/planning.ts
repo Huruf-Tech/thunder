@@ -1,4 +1,3 @@
-import { join } from "@std/path/join";
 import { stepCountIs, streamText } from "ai";
 
 import models from "@/ai-provider.ts";
@@ -113,12 +112,12 @@ export const planning = async (
     },
   });
 
-  await logAgentStream(result).catch(async (error) => {
-    await Deno.writeTextFile(
-      join(Deno.cwd(), "./ai-agent-error.txt"),
-      String(error),
-    );
-  });
+  // await logAgentStream(result).catch(async (error) => {
+  //   await Deno.writeTextFile(
+  //     join(Deno.cwd(), "./ai-agent-error.txt"),
+  //     String(error),
+  //   );
+  // });
 
   return await result.text;
 };
@@ -145,6 +144,11 @@ export const reviewPlan = async (
       getMemories: getMemoriesTool,
     },
 
+    timeout: {
+      stepMs: 180_000,
+      chunkMs: 60_000,
+    },
+
     messages: [
       {
         role: "user",
@@ -164,6 +168,38 @@ export const reviewPlan = async (
     ],
 
     stopWhen: stepCountIs(10),
+
+    experimental_onStepStart({ stepNumber }) {
+      console.log(`[AI] step ${stepNumber} started`);
+    },
+
+    onStepFinish({ stepNumber, finishReason, usage }) {
+      console.log(`[AI] step ${stepNumber} finished`, {
+        finishReason,
+        usage,
+      });
+    },
+
+    experimental_onToolCallStart({ toolCall }) {
+      console.log(`[AI] tool started: ${toolCall.toolName}`, toolCall.input);
+    },
+
+    experimental_onToolCallFinish({ toolCall, toolExecutionMs }) {
+      console.log(`[AI] tool finished: ${toolCall.toolName}`, {
+        toolExecutionMs,
+      });
+    },
+
+    onFinish({ finishReason, usage }) {
+      console.log("[AI] agent finished", {
+        finishReason,
+        usage,
+      });
+    },
+
+    onError({ error }) {
+      console.error("[AI] error:", error);
+    },
   });
 
   await logAgentStream(result);

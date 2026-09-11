@@ -74,10 +74,43 @@ export const queryDocsTool = tool({
             "Go ahead read: llms-full.txt, than read all the reference files found in llms-full.txt (Like: llms.txt, llms.extension.txt and others etc) and give me the json",
 
           stopWhen: stepCountIs(100),
+
+          experimental_onStepStart({ stepNumber }) {
+            console.log(`[AI] step ${stepNumber} started`);
+          },
+
+          onStepFinish({ stepNumber, finishReason, usage }) {
+            console.log(`[AI] step ${stepNumber} finished`, {
+              finishReason,
+              usage,
+            });
+          },
+
+          experimental_onToolCallStart({ toolCall }) {
+            console.log(
+              `[AI] tool started: ${toolCall.toolName}`,
+              toolCall.input,
+            );
+          },
+
+          experimental_onToolCallFinish({ toolCall, toolExecutionMs }) {
+            console.log(`[AI] tool finished: ${toolCall.toolName}`, {
+              toolExecutionMs,
+            });
+          },
+
+          onFinish({ finishReason, usage }) {
+            console.log("[AI] agent finished", {
+              finishReason,
+              usage,
+            });
+          },
         }).catch((error) => {
           console.error(error);
           throw error;
         });
+
+        console.info("Generating embeddings...");
 
         const { values, embeddings } = await embedMany({
           model: models.embedder,
