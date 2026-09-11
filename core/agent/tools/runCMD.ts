@@ -17,7 +17,7 @@ export const runCMDTool = tool({
       ),
       cmd: z.string().array(),
       result: z.string().optional().describe("Result of the command execution"),
-      error: z.unknown().optional().describe(
+      error: z.string().optional().describe(
         "Error while executing the command",
       ),
     }).array(),
@@ -35,21 +35,17 @@ export const runCMDTool = tool({
 
         return { executed: true, cmd, result };
       } catch (error) {
-        return { executed: false, cmd, error };
+        return { executed: false, cmd, error: String(error) };
       }
     };
 
     const results: Array<
-      { executed: boolean; cmd: string[]; result?: string; error?: unknown }
+      { executed: boolean; cmd: string[]; result?: string; error?: string }
     > = [];
 
     for (const cmd of cmds) {
       results.push(await run(cmd));
     }
-
-    console.log("Results:", results);
-
-    await Confirm.prompt("Continue...");
 
     return {
       results,
