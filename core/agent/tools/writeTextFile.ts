@@ -2,11 +2,11 @@ import { tool } from "ai";
 import { z } from "zod";
 import { join } from "@std/path/join";
 
-export const writeFileTool = tool({
-  description: "Write the content in a file",
+export const writeTextFileTool = tool({
+  description: "Write the text content in a file",
   inputSchema: z.object({
     filePath: z.string().describe("The path to the file to read"),
-    content: z.string().describe("The contents of the file"),
+    content: z.string().describe("The text contents of the file"),
   }),
   outputSchema: z.object({
     success: z.boolean().describe("If the file was written successfully"),

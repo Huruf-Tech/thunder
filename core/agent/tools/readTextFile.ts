@@ -2,8 +2,8 @@ import { tool } from "ai";
 import { z } from "zod";
 import { join } from "@std/path/join";
 
-export const readFileTool = tool({
-  description: "Read the content of a file",
+export const readTextFileTool = tool({
+  description: "Read the text content of a file",
   inputSchema: z.object({
     filePath: z.string().describe("The path to the file to read"),
   }),

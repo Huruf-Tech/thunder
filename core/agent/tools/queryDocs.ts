@@ -4,7 +4,7 @@ import { z } from "zod";
 import { Confirm } from "@cliffy/prompt";
 
 import models from "@/ai-provider.ts";
-import { readFileTool } from "@/core/agent/tools/readFile.ts";
+import { readTextFileTool } from "@/core/agent/tools/readTextFile.ts";
 import { listPluginsTool } from "@/core/agent/tools/listPlugins.ts";
 
 let indexPromise: Promise<void> | null = null;
@@ -63,7 +63,7 @@ export const queryDocsTool = tool({
             **Strictly follow this**: No Markdown fences, No explanations, No comments, No headings, or No extra text. Each item must contain only content property. The entire response must be directly parsable with JSON.parse(). Return [] if there is nothing to chunk.
             `,
           tools: {
-            readFile: readFileTool,
+            readTextFile: readTextFileTool,
             listPlugins: listPluginsTool,
           },
           prompt:

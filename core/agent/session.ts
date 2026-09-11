@@ -7,8 +7,8 @@ import { promptTool } from "@/core/agent/tools/prompt.ts";
 import { queryDocsTool } from "@/core/agent/tools/queryDocs.ts";
 import { getMemoriesTool, rememberTool } from "@/core/agent/tools/remember.ts";
 import { isAnthropicModel } from "@/core/agent/utils/isAnthropicModel.ts";
-import { readFileTool } from "@/core/agent/tools/readFile.ts";
-import { writeFileTool } from "@/core/agent/tools/writeFile.ts";
+import { readTextFileTool } from "@/core/agent/tools/readTextFile.ts";
+import { writeTextFileTool } from "@/core/agent/tools/writeTextFile.ts";
 import { listPluginsTool } from "@/core/agent/tools/listPlugins.ts";
 import { addPluginTool } from "@/core/agent/tools/addPlugin.ts";
 import { runCMDTool } from "@/core/agent/tools/runCMD.ts";
@@ -104,8 +104,8 @@ export const session = async (
       queryDocs: queryDocsTool,
       keepInMind: rememberTool,
       getMemories: getMemoriesTool,
-      readFile: readFileTool,
-      writeFile: writeFileTool,
+      readTextFile: readTextFileTool,
+      writeTextFile: writeTextFileTool,
       listPlugins: listPluginsTool,
       addPlugin: addPluginTool,
       runCMD: runCMDTool,
