@@ -13,7 +13,7 @@ const google = createGoogle({
 });
 
 const openai = createOpenAI({
-  apiKey: Env.getSync("GOOGLE_AI_API_KEY"),
+  apiKey: Env.getSync("OPENAI_API_KEY"),
 });
 
 export default {
@@ -21,7 +21,7 @@ export default {
   // engineer: anthropic("claude-sonnet-5"),
   // helper: anthropic("claude-sonnet-5"),
   architect: openai("gpt-6-astra"),
-  engineer: openai("gpt-5.6-sol"),
+  engineer: openai("gpt-5.6-luna"),
   helper: openai("gpt-5-codex"),
   embedder: google.embedding("gemini-embedding-001"),
 } satisfies ModelProvider;

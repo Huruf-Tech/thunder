@@ -9,7 +9,7 @@ export async function logAgentStream(result: StreamTextResult<any, any, any>) {
         break;
 
       case "reasoning-delta":
-        // optionally show provider-exposed reasoning summary
+        console.log("Reasoning:", part.text);
         break;
 
       case "tool-call":
@@ -34,6 +34,7 @@ export async function logAgentStream(result: StreamTextResult<any, any, any>) {
       }
 
       case "finish":
+        console.log("Finished:", part.totalUsage);
         break;
     }
   }
