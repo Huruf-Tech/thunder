@@ -15,6 +15,7 @@ export const runCMDTool = tool({
       executed: z.boolean().describe(
         "If the command was executed successfully",
       ),
+      cmd: z.string().array(),
       result: z.string().optional().describe("Result of the command execution"),
       error: z.unknown().optional().describe(
         "Error while executing the command",
@@ -32,23 +33,19 @@ export const runCMDTool = tool({
 
         const result = await sh(cmd, Deno.cwd());
 
-        return { executed: true, result };
+        return { executed: true, cmd, result };
       } catch (error) {
-        return { executed: false, error };
+        return { executed: false, cmd, error };
       }
     };
 
     const results: Array<
-      { executed: boolean; result?: string; error?: unknown }
+      { executed: boolean; cmd: string[]; result?: string; error?: unknown }
     > = [];
 
     for (const cmd of cmds) {
       results.push(await run(cmd));
     }
-
-    console.log(results);
-
-    await Confirm.prompt("Continue?");
 
     return {
       results,
