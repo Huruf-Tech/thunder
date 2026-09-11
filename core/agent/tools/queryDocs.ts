@@ -110,7 +110,7 @@ export const queryDocsTool = tool({
           throw error;
         });
 
-        console.info("Generating embeddings...");
+        console.info("Generating embeddings from:", result.text);
 
         const { values, embeddings } = await embedMany({
           model: models.embedder,
