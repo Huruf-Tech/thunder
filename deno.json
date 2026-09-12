@@ -31,6 +31,7 @@
   },
   "imports": {
     "@/": "./",
+    "@ai-sdk/anthropic": "npm:@ai-sdk/anthropic@^4.0.49",
     "@ai-sdk/openai": "npm:@ai-sdk/openai@^4.0.58",
     "@cliffy/prompt": "jsr:@cliffy/prompt@^1.0.0-rc.8",
     "@std/cli": "jsr:@std/cli@^1.0.25",

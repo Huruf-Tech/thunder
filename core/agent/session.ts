@@ -114,11 +114,6 @@ export const session = async (
       runCMD: runCMDTool,
     },
 
-    timeout: {
-      stepMs: 180_000,
-      chunkMs: 60_000,
-    },
-
     messages: [
       {
         role: "user",

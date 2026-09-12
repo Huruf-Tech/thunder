@@ -51,7 +51,7 @@ const basePlanInstructions = `
 
     ## Database Schema
 
-    Define collections, field types, required/optional fields, defaults, validation, relationships, indexes, uniqueness constraints, and relevant data lifecycle rules.
+    Define models based on the database schema docs and relevant indexes too.
 
     Output only the complete Markdown plan. Do not implement code or call any tool after the plan is ready.
     `;
@@ -71,11 +71,6 @@ export const planning = async (
       queryDocs: queryDocsTool,
       keepInMind: rememberTool,
       getMemories: getMemoriesTool,
-    },
-
-    timeout: {
-      stepMs: 180_000,
-      chunkMs: 60_000,
     },
 
     messages: [
