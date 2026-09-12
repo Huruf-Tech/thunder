@@ -15,8 +15,6 @@ export const addPluginTool = tool({
   }),
   execute: async ({ name }) => {
     try {
-      console.info("Adding plugin:", name);
-
       await addPlugin({
         name,
         setup: true,

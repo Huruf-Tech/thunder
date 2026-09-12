@@ -22,8 +22,6 @@ export const queryDocsTool = tool({
     ),
   }),
   execute: async ({ query }) => {
-    console.log("Querying docs for:", query);
-
     const vectra = new LocalIndex("./.ai/vectra/docs");
 
     if (!(await vectra.isIndexCreated())) {
@@ -109,8 +107,6 @@ export const queryDocsTool = tool({
           console.error(error);
           throw error;
         });
-
-        console.info("Generating embeddings from:", result.text);
 
         const { values, embeddings } = await embedMany({
           model: models.embedder,

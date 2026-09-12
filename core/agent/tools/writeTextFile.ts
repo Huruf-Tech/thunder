@@ -10,7 +10,7 @@ export const writeTextFileTool = tool({
   }),
   outputSchema: z.object({
     success: z.boolean().describe("If the file was written successfully"),
-    error: z.unknown().optional().describe("File writing error"),
+    error: z.string().optional().describe("File writing error"),
   }),
   execute: async ({ filePath, content }) => {
     try {
@@ -18,7 +18,7 @@ export const writeTextFileTool = tool({
 
       return { success: true };
     } catch (error) {
-      return { success: false, error };
+      return { success: false, error: String(error) };
     }
   },
 });

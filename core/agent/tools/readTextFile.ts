@@ -8,15 +8,16 @@ export const readTextFileTool = tool({
     filePath: z.string().describe("The path to the file to read"),
   }),
   outputSchema: z.object({
-    content: z.string().describe("The content of the file"),
+    content: z.string().optional().describe("The content of the file"),
+    error: z.string().optional().describe("File reading error"),
   }),
   execute: async ({ filePath }) => {
     try {
       const content = await Deno.readTextFile(join(Deno.cwd(), filePath));
 
       return { content };
-    } catch {
-      return { content: "" };
+    } catch (error) {
+      return { error: String(error) };
     }
   },
 });
