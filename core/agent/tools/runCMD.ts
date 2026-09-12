@@ -3,7 +3,7 @@ import { dirname } from "@std/path/dirname";
 import { tool } from "ai";
 import { z } from "zod";
 import { sh } from "@/core/scripts/lib/sh.ts";
-import { Confirm } from "@cliffy/prompt";
+import { Select } from "@cliffy/prompt";
 
 const getAllowedList = async (allowedListPath: string) => {
   const rawAllowedList = await Deno.readTextFile(allowedListPath).catch(() =>
@@ -58,13 +58,24 @@ export const runCMDTool = tool({
       try {
         const fullCmd = cmd.join(" ");
 
-        const confirm = allowed.includes(fullCmd) || await Confirm.prompt(
-          `Do you want to allow executing the command: "${fullCmd}"`,
-        );
+        if (!allowed.includes(fullCmd)) {
+          const allow = await Select.prompt({
+            message: `Do you want to allow executing the command: "${fullCmd}"`,
+            options: [
+              { name: "Allow this time", value: "allow" },
+              { name: "Always allow", value: "always" },
+              { name: "Deny", value: "deny" },
+            ],
+          });
 
-        if (!confirm) throw new Error("User denied to execute the command!");
+          if (!["allow", "always"].includes(allow)) {
+            throw new Error("User denied to execute the command!");
+          }
 
-        await pushAllowedList(allowedListPath, [fullCmd], allowed);
+          if (allow === "always") {
+            await pushAllowedList(allowedListPath, [fullCmd], allowed);
+          }
+        }
 
         const result = await sh(cmd, Deno.cwd());
 
