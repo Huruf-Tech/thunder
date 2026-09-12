@@ -12,8 +12,8 @@ const openai = createOpenAI({
 });
 
 export default {
-  architect: anthropic("claude-opus-5"),
-  engineer: openai("gpt-6-astra"),
+  architect: anthropic("claude-fable-5-1"),
+  engineer: anthropic("claude-opus-5"),
   helper: openai("gpt-5.6-sol"),
   embedder: openai.embedding("text-embedding-3-large"),
 } satisfies ModelProvider;
