@@ -2,6 +2,29 @@ import { tool } from "ai";
 import { z } from "zod";
 import { sh } from "@/core/scripts/lib/sh.ts";
 import { Confirm } from "@cliffy/prompt";
+import { join } from "@std/path/join";
+
+const getAllowedList = async (allowedListPath: string) => {
+  const rawAllowedList = await Deno.readTextFile(allowedListPath).catch(() =>
+    "[]"
+  );
+  return JSON.parse(rawAllowedList) as string[];
+};
+
+const pushAllowedList = async (
+  allowedListPath: string,
+  cmds: string[],
+  existingList?: string[],
+) => {
+  const list = existingList ?? await getAllowedList(allowedListPath);
+
+  list.push(...cmds);
+
+  await Deno.writeTextFile(
+    allowedListPath,
+    JSON.stringify(Array.from(new Set(list))),
+  );
+};
 
 export const runCMDTool = tool({
   description: "Run multiple shell commands",
@@ -23,13 +46,20 @@ export const runCMDTool = tool({
     }).array(),
   }),
   execute: async ({ cmds }) => {
+    const allowedListPath = join(Deno.cwd(), "./ai/allowed-cmds.json");
+    const allowed = await getAllowedList(allowedListPath);
+
     const run = async (cmd: string[]) => {
       try {
-        const confirm = await Confirm.prompt(
-          `Do you want to allow executing the command: "${cmd.join(" ")}"`,
+        const fullCmd = cmd.join(" ");
+
+        const confirm = allowed.includes(fullCmd) || await Confirm.prompt(
+          `Do you want to allow executing the command: "${fullCmd}"`,
         );
 
         if (!confirm) throw new Error("User denied to execute the command!");
+
+        await pushAllowedList(allowedListPath, [fullCmd], allowed);
 
         const result = await sh(cmd, Deno.cwd());
 
