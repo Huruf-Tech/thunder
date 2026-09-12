@@ -23,8 +23,6 @@
     "jsr:@std/path@^1.1.4": "1.1.4",
     "jsr:@std/streams@^1.0.17": "1.0.17",
     "jsr:@std/text@^1.0.17": "1.0.17",
-    "npm:@ai-sdk/anthropic@^4.0.45": "4.0.45_zod@4.3.6",
-    "npm:@ai-sdk/google@^4.0.57": "4.0.57_zod@4.3.6",
     "npm:@ai-sdk/openai@^4.0.58": "4.0.58_zod@4.3.6",
     "npm:@oridune/zod-to-ts@^2.0.1": "2.0.1_typescript@5.9.3_zod@4.3.6",
     "npm:@types/ejs@*": "3.1.5",
@@ -145,28 +143,12 @@
     }
   },
   "npm": {
-    "@ai-sdk/anthropic@4.0.45_zod@4.3.6": {
-      "integrity": "sha512-2h1WYU1VdfkI6CU3mLes7Vh4Ua3jq5LDE1ciMgUymLNS7ZbtqhgVzBBPhnOdg83lnkYTAOeApCgkGOdwJHxdkA==",
-      "dependencies": [
-        "@ai-sdk/provider@4.0.8",
-        "@ai-sdk/provider-utils@5.0.33_zod@4.3.6",
-        "zod"
-      ]
-    },
     "@ai-sdk/gateway@4.0.68_zod@4.3.6": {
       "integrity": "sha512-XKvZv6HFoMOWK64zXMaQatk4SxBzBDkGg7enXPWsCkxqPP4zDhFewOoBKasf3FPnZP9ceE+Yj3BgW925blAWtw==",
       "dependencies": [
         "@ai-sdk/provider@4.0.8",
         "@ai-sdk/provider-utils@5.0.33_zod@4.3.6",
         "@vercel/oidc",
-        "zod"
-      ]
-    },
-    "@ai-sdk/google@4.0.57_zod@4.3.6": {
-      "integrity": "sha512-/d4DKIDB5iTQ3X2PDDEdU5cQlLAC3qW7UL2WP+U7QKrr1tCJ58PFRd35NWieahxFe0yQF7PZrHdi212ALSy1Hw==",
-      "dependencies": [
-        "@ai-sdk/provider@4.0.8",
-        "@ai-sdk/provider-utils@5.0.33_zod@4.3.6",
         "zod"
       ]
     },
@@ -1027,8 +1009,6 @@
       "jsr:@std/fs@^1.0.21",
       "jsr:@std/http@^1.0.23",
       "jsr:@std/path@^1.1.4",
-      "npm:@ai-sdk/anthropic@^4.0.45",
-      "npm:@ai-sdk/google@^4.0.57",
       "npm:@ai-sdk/openai@^4.0.58",
       "npm:@oridune/zod-to-ts@^2.0.1",
       "npm:@types/ejs@^3.1.5",
