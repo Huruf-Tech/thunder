@@ -1,8 +1,9 @@
+import { join } from "@std/path/join";
+import { dirname } from "@std/path/dirname";
 import { tool } from "ai";
 import { z } from "zod";
 import { sh } from "@/core/scripts/lib/sh.ts";
 import { Confirm } from "@cliffy/prompt";
-import { join } from "@std/path/join";
 
 const getAllowedList = async (allowedListPath: string) => {
   const rawAllowedList = await Deno.readTextFile(allowedListPath).catch(() =>
@@ -19,6 +20,10 @@ const pushAllowedList = async (
   const list = existingList ?? await getAllowedList(allowedListPath);
 
   list.push(...cmds);
+
+  await Deno.mkdir(dirname(allowedListPath), { recursive: true }).catch(
+    console.error,
+  );
 
   await Deno.writeTextFile(
     allowedListPath,
@@ -46,7 +51,7 @@ export const runCMDTool = tool({
     }).array(),
   }),
   execute: async ({ cmds }) => {
-    const allowedListPath = join(Deno.cwd(), "./ai/allowed-cmds.json");
+    const allowedListPath = join(Deno.cwd(), "./.ai/allowed-cmds.json");
     const allowed = await getAllowedList(allowedListPath);
 
     const run = async (cmd: string[]) => {
