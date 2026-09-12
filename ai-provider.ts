@@ -9,6 +9,6 @@ const openai = createOpenAI({
 export default {
   architect: openai("gpt-6-astra"),
   engineer: openai("gpt-5.6-sol"),
-  helper: openai("gpt-5.6-luna"),
+  helper: openai("gpt-5.6-sol"),
   embedder: openai.embedding("text-embedding-3-large"),
 } satisfies ModelProvider;
