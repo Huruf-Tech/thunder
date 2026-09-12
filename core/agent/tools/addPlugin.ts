@@ -19,7 +19,6 @@ export const addPluginTool = tool({
         name,
         setup: true,
         prompt: false,
-        dryRun: true,
       });
 
       return { success: true };
