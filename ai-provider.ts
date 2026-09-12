@@ -13,7 +13,7 @@ const openai = createOpenAI({
 
 export default {
   architect: anthropic("claude-opus-5"),
-  engineer: anthropic("claude-opus-5"),
+  engineer: openai("gpt-6-astra"),
   helper: openai("gpt-5.6-sol"),
   embedder: openai.embedding("text-embedding-3-large"),
 } satisfies ModelProvider;
