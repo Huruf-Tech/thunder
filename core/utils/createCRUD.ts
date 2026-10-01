@@ -496,7 +496,7 @@ export const normalizeFilterExpression = (
         return value.value === "now" ? new Date() : new Date(value.value);
 
       case "milliseconds":
-        return new Date(Date.now() + (+value.value));
+        return new Date(Date.now() + value.value);
 
       case "number":
         return Number(value.value);
