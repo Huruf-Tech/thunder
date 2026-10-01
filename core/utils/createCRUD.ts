@@ -10,6 +10,7 @@ import {
   UpdateResult,
   WithId,
 } from "mongodb";
+import { parseDate } from "chrono-node";
 import { Response } from "@/core/http/response.ts";
 import { mongodb } from "@/database.ts";
 import { deepObjectToFlatten } from "@/core/utils/objectUtils.ts";
@@ -493,10 +494,9 @@ export const normalizeFilterExpression = (
         return ["true", "1"].includes(value.value);
 
       case "date":
-        return value.value === "now" ? new Date() : new Date(value.value);
-
-      case "milliseconds":
-        return new Date(Date.now() + value.value);
+        return value.value.startsWith("nldate:")
+          ? parseDate(value.value.replace(/^nldate:/, ""))
+          : new Date(value.value);
 
       case "number":
         return Number(value.value);
