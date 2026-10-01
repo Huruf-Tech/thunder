@@ -400,7 +400,6 @@ export const clientValueSchema = z.union([
         "boolean",
         "objectId",
         "date",
-        "milliseconds",
         "regex",
         "null",
       ],
