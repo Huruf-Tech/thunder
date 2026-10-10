@@ -473,13 +473,14 @@ Create a user model
 
 import z from "zod";
 import { mongodb } from "@/database.ts";
+import { $objectId } from "@/core/utils/createCRUD.ts";
 
-const $userInput = z.object({
+export const $userInput = z.object({
   name: z.string(),
   email: z.string().email(),
 });
 
-const $user = $userInput.extend({
+export const $user = $userInput.extend({
   _id: $objectId.optional(),
   createdAt: z.date().default(() => new Date()),
 });
@@ -556,26 +557,30 @@ Quickly create REST endpoints:
 // routes/users.ts
 
 import { Router } from "@/core/http/router.ts";
-import { createCRUD, $objectId } from "@/core/utils/createCRUD.ts";
+import { createCRUD } from "@/core/utils/createCRUD.ts";
 import { userModel, $user, $userInput } from "@/schemas/user.ts";
-import z from "zod";
 
-export default new Router("/api", function users(router) {
+export default new Router("/api/users", function users(router) {
   createCRUD({
     router,
-    schema: $user,
+    schema: $user, // Full document shape, every insert is validated against it
     model: userModel,
-    insertSchema: $userInput,
+    insertSchema: $userInput, // Optional: POST body shape (defaults to schema)
 
     // Optional: narrowed fields in case of update
     updateSchema: $userInput.pick({ name: true }),
   }, {
     // Optional: disable specific endpoints
     disable: { del: true },
-    
+
+    // Optional: fixed $project stage (or an array of them) applied on GET
+    // before the client's own pagination/projection stages.
+    projection: { password: 0 },
+
     // Optional: field isolation (multi-tenancy or ownership isolation)
     // Note: in case of post method (create operation) isolation field is inserted on the database for later isolation match.
     isolationFields: async (req, action) => {
+      // action is "create" | "get" | "count" | "update" | "del"
 
       // Optional: In case of create action, if you want to pass more or less fields to the insert operation you can do the following
       if(action === "create") {
@@ -597,23 +602,115 @@ export default new Router("/api", function users(router) {
         orgId: req.headers.get("X-Org-Id"),
       }
     },
-    
-    // Optional: lifecycle hooks
+
+    // Optional: lifecycle hooks. Every hook also receives `session` (see Gotchas).
     hooks: {
-      beforeCreate: ({ data }) => ({ ...data, createdBy: "system" }),
-      afterCreate: ({ data }) => console.log("Created:", data._id),
+      // Returning a value replaces the data that gets inserted
+      beforeCreate: ({ data, session }) => ({ ...data, createdBy: "system" }),
+      // The inserted id is on `results`, NOT on `data` (which is the parsed body)
+      afterCreate: ({ results, data, session }) => console.log("Created:", results._id),
+
+      // Returning a value replaces the $set payload
+      beforeUpdate: ({ _id, data, session }) => ({ ...data, touchedAt: new Date() }),
+      afterUpdate: ({ _id, results, data, session }) => {},
+
+      beforeDel: ({ _id, session }) => {},
+      afterDel: ({ _id, results, session }) => {},
     },
   });
 }).group("Users"); // Optional: allows you to group the endpoints for better openapi spec generation
 ```
 
-Creates endpoints:
-- `POST /users/api` - Create
-- `GET /users/api` - List all
-- `GET /users/api/:id` - Get one
-- `GET /users/api/count` - Count
-- `PATCH /users/api/:id` - Update
-- `DELETE /users/api/:id` - Delete
+A route's path is the router's root path plus the endpoint. The router's
+function name (`users` above) is only a scope label used for metadata and
+OpenAPI generation — it is **not** part of the URL. So a root of `/api/users`
+creates:
+
+| Endpoint | Response |
+| --- | --- |
+| `POST /api/users` | `{ _id: string }` |
+| `GET /api/users` | `{ results: [...] }` — list |
+| `GET /api/users/:id` | `{ results: [...] }` — the **same array shape**, with 0 or 1 entry |
+| `GET /api/users/count` | `{ count: number }` |
+| `PATCH /api/users/:id` | `200 OK`, empty body |
+| `DELETE /api/users/:id` | `200 OK`, empty body |
+
+`createCRUD` also writes `schema`, `insertSchema` and `updateSchema` onto
+`router.metadata.crud` as JSON Schema, which is what drives SDK and OpenAPI
+generation.
+
+### Querying GET and /count
+
+`GET` accepts the full pagination query below; `/count` accepts only `filters`
+and `subFilters`. Query strings are parsed with `qs`, so send nested values in
+bracket notation (`?filters[name][$eq]=john&limit=50`).
+
+| Param | Default | Notes |
+| --- | --- | --- |
+| `filters` | — | Client-side filter object (see below) |
+| `subFilters` | — | A second, independently applied filter layer |
+| `offset` | `0` | `$skip` |
+| `limit` | `2000` | `$limit`, min `1`, **max `2000`** |
+| `sort` | `{ _id: -1 }` | Mongodb sort object, values `-1`..`1` |
+| `project` | — | Mongodb projection object; a value may also be `{ $slice: n }` or `{ $slice: [n, n] }` |
+
+A filter value is either a plain string or a tagged object, which is how a
+client sends typed values over a query string:
+
+```jsonc
+{
+  "name":      { "$regex": { "type": "regex", "value": "^jo", "options": { "regexFlags": "i" } } },
+  "user":      { "$eq": { "type": "objectId", "value": "68f0a1..." } },
+  "age":       { "$gte": { "type": "number", "value": "18" } },
+  "verified":  { "$eq": { "type": "boolean", "value": "true" } },   // "true" / "1" are truthy
+  "deletedAt": { "$exists": { "type": "boolean", "value": "false" } },
+  "parent":    { "$eq": { "type": "null", "value": "" } },
+  "role":      { "$in": ["admin", "owner"] },
+  "banned":    { "$not": { "$eq": "true" } },
+
+  // A date takes an ISO string, or `nldate:` + a natural-language expression
+  "createdAt": { "$gte": { "type": "date", "value": "nldate:7 days ago" } },
+  "expiresAt": { "$lte": { "type": "date", "value": "nldate:next friday" } }
+}
+```
+
+- Value types: `string`, `number`, `boolean`, `objectId`, `date`, `regex`, `null`.
+- Operators: `$exists`, `$eq`, `$ne`, `$gt`, `$gte`, `$lt`, `$lte`, `$regex`,
+  `$in`, `$nin`, `$all`, `$mod` (a raw `[divisor, remainder]` tuple, not a
+  tagged value), and `$not` wrapping any expression.
+- Combine with `{ "$and": [...] }` / `{ "$or": [...] }` of filter objects.
+- A `$regex` pattern longer than 200 characters is rejected with a `400` — the
+  pattern comes from the client and is run by mongod too.
+
+### Gotchas
+
+- **Registering a hook turns the operation into a transaction.** If any hook
+  exists for create / update / delete, that operation runs inside
+  `mongodb.withSession(_ => _.withTransaction(...))`, which requires a replica
+  set. With no hooks it stays a plain single operation.
+- **`updatedAt` is always written on `PATCH`**, whether or not your schema
+  declares it.
+- **A zero-match `PATCH`/`DELETE` throws** (`No record updated!` /
+  `No record deleted!`) — **but only while no `afterUpdate`/`afterDel` hook is
+  registered.** Register one and a no-op write silently returns `200`, so check
+  `results.modifiedCount` / `results.deletedCount` inside the hook yourself.
+- `GET /:id` is the list route with an optional param, so it returns an array
+  and the pagination query still applies to it.
+
+### Filter helpers
+
+The filter layer is exported separately, so the same client filter format can be
+reused outside a CRUD endpoint:
+
+- `normalizeFilters(filters)` / `normalizeFilterExpression(value)` — convert a
+  client filter into a mongodb filter (resolving `objectId`, `date`, `nldate:`,
+  `regex`, …).
+- `testFilters(filters, data)` — evaluate a client filter against a plain object
+  in memory, with no database round trip (useful for access rules and policies).
+- `paginatedAggregation(query)` — the `$match` / `$sort` / `$skip` / `$limit` /
+  `$project` stages for a parsed pagination query, for hand-rolled aggregations.
+- Schemas: `$pagination`, `$filter`, `$basicFilter`, `$multiFilter`,
+  `$expression`, `$clientValue` (each also exported as `…Schema`).
 
 ## Validation with Zod
 
@@ -866,6 +963,9 @@ Built-ins that already exist (do NOT re-implement these):
 - **Pagination** → `paginated` from `@/core/utils/paginate.ts`.
 - **Template rendering** → `ejsRender` / `handlebarsRender` from `@/core/utils/textRender.ts`.
 - **CRUD endpoints** → `createCRUD` and `$objectId` from `@/core/utils/createCRUD.ts`.
+- **Client-side filters** → `normalizeFilters` / `testFilters` / `paginatedAggregation`
+  and the `$pagination` / `$filter` schema family, also from
+  `@/core/utils/createCRUD.ts` (don't invent a second filter format).
 - **Request parsing & auth** → `paramsAsJson`, `bodyAsJson`, `parseBasicAuth`, `serveAssets` from `@/core/http/utils.ts`.
 - **Responses** → `Response` helpers from `@/core/http/response.ts`.
 - **Validation** → `zod` (already a dependency).
