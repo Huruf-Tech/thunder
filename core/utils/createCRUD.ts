@@ -15,14 +15,18 @@ import { Response } from "@/core/http/response.ts";
 import { mongodb } from "@/database.ts";
 import { deepObjectToFlatten } from "@/core/utils/objectUtils.ts";
 
-export type TCrudDetails<T extends z.ZodObject> = {
+export type TCrudDetails<
+  T extends z.ZodObject,
+  I extends z.ZodObject,
+  U extends z.ZodObject,
+> = {
   router: TRouter & {
     metadata?: Record<string, unknown>;
   };
   schema: T;
   model: Collection<z.output<T>>;
-  insertSchema?: z.ZodObject;
-  updateSchema?: z.ZodObject;
+  insertSchema?: I;
+  updateSchema?: U;
 };
 
 export type TCrudIsolation<T> = (
@@ -46,7 +50,12 @@ export type TCrudProjection<T> =
     [K in string]?: number;
   };
 
-export type TCrudOptions<T extends z.ZodObject, D = z.output<T>> = {
+export type TCrudOptions<
+  T extends z.ZodObject,
+  I extends z.ZodObject = T,
+  U extends z.ZodObject = I,
+  D = z.output<T>,
+> = {
   disable?: {
     create?: boolean;
     get?: boolean;
@@ -58,22 +67,30 @@ export type TCrudOptions<T extends z.ZodObject, D = z.output<T>> = {
   isolationFields?: TCrudIsolation<D>;
   hooks?: {
     beforeCreate?: (opts: {
-      data: D & { _id?: ObjectId };
+      data: z.output<I> & { _id?: ObjectId };
       session?: ClientSession;
     }, req: Request) => D | void | Promise<D | void>;
     afterCreate?: (
-      opts: { data: WithId<D>; session?: ClientSession },
+      opts: {
+        results: WithId<D>;
+        data: z.output<I> & { _id?: ObjectId };
+        session?: ClientSession;
+      },
       req: Request,
     ) => void | Promise<void>;
     beforeUpdate?: (
-      opts: { _id: ObjectId; data: Partial<D>; session?: ClientSession },
+      opts: {
+        _id: ObjectId;
+        data: Partial<z.output<U>>;
+        session?: ClientSession;
+      },
       req: Request,
     ) => Partial<D> | void | Promise<Partial<D> | void>;
     afterUpdate?: (
       opts: {
-        _id: ObjectId;
         results: UpdateResult<Partial<D>>;
-        data: Partial<D>;
+        _id: ObjectId;
+        data: Partial<z.output<U>>;
         session?: ClientSession;
       },
       req: Request,
@@ -131,9 +148,13 @@ export const paginatedAggregation = (
   ...(query.project ? [{ $project: query.project }] : emptyArray),
 ];
 
-export const createCRUD = <T extends z.ZodObject>(
-  details: TCrudDetails<T>,
-  opts?: TCrudOptions<T>,
+export const createCRUD = <
+  T extends z.ZodObject,
+  I extends z.ZodObject = T,
+  U extends z.ZodObject = I,
+>(
+  details: TCrudDetails<T, I, U>,
+  opts?: TCrudOptions<T, I, U>,
 ) => {
   details.router.metadata = {
     crud: {
@@ -188,7 +209,8 @@ export const createCRUD = <T extends z.ZodObject>(
             );
 
             await opts?.hooks?.afterCreate?.({
-              data: { _id: insertedId, ...data },
+              data: body,
+              results: { _id: insertedId, ...dataToInsert },
               session,
             }, req);
 
