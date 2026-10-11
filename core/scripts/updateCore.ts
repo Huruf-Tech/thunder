@@ -119,6 +119,7 @@ export const updateCore = async (options: {
               /^(\\|\/)?(serve\.base\.ts)/,
               /^(\\|\/)?(llms\.txt)/,
               /^(\\|\/)?(llms-full\.txt)/,
+              /^(\\|\/)?(CLAUDE\.md)/,
             ].reduce(
               (continues, expect) =>
                 continues &&
