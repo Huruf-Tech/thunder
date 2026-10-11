@@ -753,9 +753,10 @@ Note: Only errors log in production mode.
 ## Caching
 
 ```typescript
-import { cache } from "@/core/utils/cache.ts";
+import { cache, memoize } from "@/core/utils/cache.ts";
 
-// Cache function results with TTL (milliseconds)
+// Cache function results with TTL (milliseconds). The arguments are hashed
+// (ohash), so every distinct argument list gets its own entry.
 const getUser = cache(async (id: string) => {
   return await db.users.findOne({ _id: id });
 }, 60_000); // 1 minute TTL
@@ -764,7 +765,37 @@ const getUser = cache(async (id: string) => {
 const getConfig = cache(async () => {
   return await loadConfig();
 }, Infinity);
+
+// Second overload: pass a key object instead of a ttl. The entries live exactly
+// as long as that object stays reachable, so a cache can be scoped to a request
+// (or a tenant, or a client instance) and be collected along with it.
+const handler = (req: Request) => {
+  const getPermissions = cache(async (role: string) => {
+    return await permissionModel.find({ role }).toArray();
+  }, req); // Cleared once the request object is gone
+};
+
+// `memoize` caches forever under a key you compute yourself. It skips the
+// argument hashing entirely, so prefer it on hot paths that look up the same
+// constant keys on every request.
+export const findRouter = memoize(
+  async (globPattern: string, target: string) => { /* ... */ },
+  (globPattern, target) => `${globPattern}\0${target}`,
+);
 ```
+
+- **`cache()` is deduplicated per `(fn, ttl)` or `(fn, keyObject)` pair** —
+  calling it twice with the same function and the same ttl hands back the *same*
+  cached function, so calling it inline inside a handler is safe and does not
+  need hoisting to module scope. A different ttl is a separate cache.
+- **A rejected promise is evicted from the cache**, so failed async work retries
+  on the next call instead of the rejection being served until it expires. True
+  for both `cache` and `memoize`.
+- The TTL sweep timer is unref'd and `fn` is held weakly, so a cache never keeps
+  the process alive or pins its function in memory. Nothing to clear manually.
+- Calling a `keyObject` cached function after that object has been collected
+  throws. A second argument that is neither a number nor an object throws a
+  `TypeError`.
 
 ## Background Jobs (Async Tasks)
 
@@ -957,7 +988,8 @@ Built-ins that already exist (do NOT re-implement these):
 
 - **Env management** → `Env` from `@/core/utils/env.ts` (don't read `Deno.env` directly or add dotenv libs).
 - **Logging** → `Logger` from `@/core/utils/logger.ts` (don't add a logging package).
-- **Caching** → `cache` from `@/core/utils/cache.ts`.
+- **Caching / memoization** → `cache` (ttl or key-object scoped) and
+  `memoize` (forever, caller-supplied key) from `@/core/utils/cache.ts`.
 - **Hashing** → `createHash` family from `@/core/utils/hash.ts` (don't add crypto/hash libs unless it becomes mandatory or the required feature doesn't exists).
 - **Query parsing** → `queryAsJson` / `parseQueryParams` (don't add a query-string parser).
 - **Pagination** → `paginated` from `@/core/utils/paginate.ts`.
@@ -1598,4 +1630,4 @@ await paginated(100, async (offset, limit) => {
 
 ### Already documented above
 
-These also live in `@/core/utils/` and are covered in earlier sections: `Env` (env.ts), `Logger` (logger.ts), `cache` (cache.ts), and the CRUD helpers including `createCRUD` and `$objectId` (createCRUD.ts).
+These also live in `@/core/utils/` and are covered in earlier sections: `Env` (env.ts), `Logger` (logger.ts), `cache` / `memoize` (cache.ts), and the CRUD helpers including `createCRUD` and `$objectId` (createCRUD.ts).
