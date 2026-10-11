@@ -2,8 +2,8 @@
 
 > This file is an INSTRUCTION MANIFEST for AI agents. It does not contain the
 > documentation itself. Instead, it tells you which files to read in order to
-> build a COMPLETE mental model of this project: the Thunder framework core
-> PLUS every installed plugin.
+> build a COMPLETE mental model of this project: the Thunder framework core,
+> PLUS every installed plugin, PLUS every frontend app under `public/`.
 
 ## How To Use This File (AI Agent Instructions)
 
@@ -58,6 +58,46 @@ and `plugins/myorg/thunder-stripe/llms.extension.txt`.
 If the `plugins/` directory is empty or contains no `llms.extension.txt` files,
 skip this step — the core `llms.txt` is sufficient.
 
+### Step 3 - Read every frontend app's instruction file (REQUIRED IF A FRONTEND EXISTS)
+
+The frontend lives under `public/`, one folder per frontend app. Each app MAY
+ship its own AI instruction file named:
+
+```
+llms.txt
+```
+
+Discover and read EVERY one of them using this glob pattern (relative to the
+project root):
+
+```
+./public/*/llms.txt
+```
+
+For example, if these frontend apps exist:
+
+```
+public/
+├── app/
+│   └── llms.txt        ← read this
+└── dashboard/
+    └── llms.txt        ← read this
+```
+
+...then you must read BOTH `public/app/llms.txt` and `public/dashboard/llms.txt`.
+
+Each file describes how to build that app's UI: its stack, folder structure,
+component and styling conventions, state management, and — most importantly —
+how it talks to this backend. Read the relevant app's `llms.txt` **before**
+writing or modifying any frontend code, so the UI stays in sync with the routes,
+schemas and response shapes the backend actually defines.
+
+Note that `public/{app}/www` holds that app's **built output** (it is what
+`routes/index.ts` serves). It is not frontend source — do not read it to build
+context, and do not write source files into it.
+
+If `public/` contains no `llms.txt` files, skip this step.
+
 ## Reading Rules & Precedence
 
 1. **Core first, plugins second.** The root `llms.txt` defines the base
@@ -73,6 +113,12 @@ skip this step — the core `llms.txt` is sufficient.
 4. **Re-read on change.** Plugins can be added or removed at any time
    (`deno task add:plugin` / `deno task remove:plugin`). Re-run the discovery
    glob whenever the plugin set may have changed.
+5. **The frontend follows the backend contract.** A `public/*/llms.txt` governs
+   only its own app's UI. Where it describes calling the API, the backend is
+   authoritative: the routes, schemas and response shapes in the core
+   `llms.txt` plus the plugin extensions win. If an app's instructions
+   reference an endpoint or field the backend no longer exposes, flag the
+   mismatch to the user instead of inventing either side.
 
 ## MANDATORY: Refresh Context After Installing a Plugin
 
@@ -107,9 +153,11 @@ build/working artifacts) and is NOT part of the project's source of truth.
 
 - [ ] Read `./llms.txt` (framework core).
 - [ ] Glob `./plugins/*/*/llms.extension.txt` and read each match.
-- [ ] Merge the knowledge: core rules + per-plugin extensions.
+- [ ] Glob `./public/*/llms.txt` and read it for every frontend app you touch.
+- [ ] Merge the knowledge: core rules + per-plugin extensions + per-app frontend rules.
 - [ ] Apply core conventions everywhere; apply plugin rules only within their scope.
 - [ ] After installing/updating/removing ANY plugin, re-read its `llms.extension.txt` and refresh context.
+- [ ] Before writing any UI, read that app's `llms.txt` so the frontend matches the backend's actual routes and schemas.
 - [ ] Ignore the `_temp/` folder entirely — never read from or write to it.
 
 ## For Plugin Authors
