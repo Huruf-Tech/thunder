@@ -55,6 +55,7 @@ export type TCrudOptions<
   I extends z.ZodObject = T,
   U extends z.ZodObject = I,
   D = z.output<T>,
+  PD = Partial<D>,
 > = {
   disable?: {
     create?: boolean;
@@ -69,7 +70,7 @@ export type TCrudOptions<
     beforeCreate?: (opts: {
       data: z.output<I> & { _id?: ObjectId };
       session?: ClientSession;
-    }, req: Request) => D | void | Promise<D | void>;
+    }, req: Request) => PD | void | Promise<PD | void>;
     afterCreate?: (
       opts: {
         results: WithId<D>;
@@ -85,7 +86,7 @@ export type TCrudOptions<
         session?: ClientSession;
       },
       req: Request,
-    ) => Partial<D> | void | Promise<Partial<D> | void>;
+    ) => PD | void | Promise<PD | void>;
     afterUpdate?: (
       opts: {
         results: UpdateResult<Partial<D>>;
