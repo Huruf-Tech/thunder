@@ -952,6 +952,8 @@ router.get("{/*path}", function staticFiles() {
 });
 ```
 
+The second argument can also be an array of roots, e.g. `[www, uploads]`. The first root that has the file serves it. If none has it, the index file of the first root is served.
+
 ## Import Conventions
 
 Always use the `@/` alias for project imports:

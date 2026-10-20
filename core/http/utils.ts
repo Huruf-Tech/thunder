@@ -40,15 +40,7 @@ export const bodyAsJson = async (req: Request) => {
   }
 };
 
-export const serveAssets = async (
-  req: Request,
-  root: string,
-  filePath?: string,
-) => {
-  if (!await exists(root)) {
-    return new Response("Not found", { status: 404 });
-  }
-
+const getIndexFile = async (root: string) => {
   let IndexFile = indexFileCache.get(root);
 
   if (!IndexFile) {
@@ -66,15 +58,37 @@ export const serveAssets = async (
     indexFileCache.set(root, IndexFile);
   }
 
-  return await serveFile(req, join(root, filePath ?? IndexFile)).then(
-    async (res) => {
-      if (res.status === 404) {
-        return await serveFile(req, join(root, IndexFile));
-      }
+  return IndexFile;
+};
 
-      return res;
-    },
-  );
+/**
+ * Serves `filePath` from the first root that has it. Falls back to the
+ * index file of the first root that has one (SPA routing).
+ */
+export const serveAssets = async (
+  req: Request,
+  roots: string | string[],
+  filePath?: string,
+) => {
+  const existingRoots: string[] = [];
+
+  for (const root of [roots].flat()) {
+    if (await exists(root)) existingRoots.push(root);
+  }
+
+  if (filePath) {
+    for (const root of existingRoots) {
+      const res = await serveFile(req, join(root, filePath));
+      if (res.status !== 404) return res;
+    }
+  }
+
+  for (const root of existingRoots) {
+    const res = await serveFile(req, join(root, await getIndexFile(root)));
+    if (res.status !== 404) return res;
+  }
+
+  return new Response("Not found", { status: 404 });
 };
 
 export const parseBasicAuth = (req: Request) => {
