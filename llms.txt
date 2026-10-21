@@ -15,7 +15,7 @@ thunder/
 ├── routes/           # Route handlers (file-based routing)
 │   ├── index.ts      # Fallback router (handles /)
 │   ├── {name}.ts     # Route modules (e.g., users.ts → /users/*)
-│   └── admin/        # Sub-folders are ignored (not included in routing)
+│   └── hr/           # Sub-folders only organize files; they do NOT affect routing
 ├── hooks/            # Pre/post request hooks (interceptors)
 ├── plugins/          # External plugins (Thunder projects installed as plugins)
 │   └── {org}/{name}/ # Plugin with its own routes/hooks
@@ -41,10 +41,11 @@ thunder/
   - `routes/posts.ts` → handles `/posts/*`
   - `routes/index.ts` → handles `/` (fallback)
 
-- **Sub-folders in `routes/` are ignored** by the framework
-  - `routes/admin/users.ts` is **not** registered (sub-folders are skipped)
-  - Only top-level `.ts` files in `routes/` are discovered
-  - Use this for code organization, not routing
+- **Sub-folders in `routes/` are ignored by the router, but the files inside them still work**
+  - Discovery is recursive and matches on the **filename only** — the folder name never appears in the URL
+  - `routes/hr/payroll.ts` is registered exactly like `routes/payroll.ts` → handles `/payroll/*`
+  - Because only the filename matters, two same-named files in different folders collide — keep filenames unique across `routes/`
+  - Use sub-folders purely to organize code, not to namespace URLs
 
 ### Serverless-First Architecture
 
@@ -141,9 +142,9 @@ routes/
     └── author.ts      → .group("Blog")
 ```
 
-> Reminder: sub-folders in `routes/` are NOT registered as routes — the folder
-> is purely for code organization. Each file's URL prefix still comes from its
-> own filename + the `Router` base path, independent of the folder.
+> Reminder: sub-folders in `routes/` do not affect routing — the folder is purely
+> for code organization. The files inside ARE registered; each file's URL prefix
+> comes from its own filename + the `Router` base path, independent of the folder.
 
 4. **Shape Function**: The `shape()` function registers validators with the framework. This is used for:
    - Runtime validation of requests

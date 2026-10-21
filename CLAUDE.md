@@ -20,7 +20,7 @@ Ignore `_temp/` entirely — never read from it, never write into it, exclude it
 - **Named functions only** for routers and handlers (`new Router("/api/", function users(router) {...})`); arrow functions throw. Handler names unique per router.
 - **`@/` alias** for all project imports — no relative `../core/` or `../database.ts` (lint plugins enforce this).
 - **Reuse built-ins before writing or installing anything**: `Env`, `Logger`, `cache`/`memoize`, `createHash`, `queryAsJson`, `paginated`, `createCRUD`, `normalizeFilters`, `bodyAsJson`, `Response` helpers, `zod`. Prefer `@std/*` over npm. Justify every new dependency.
-- Sub-folders in `routes/` are **not** routed — top-level `.ts` files only.
+- Sub-folders in `routes/` don't affect routing — discovery is recursive and matches on **filename only**, so `routes/hr/payroll.ts` === `routes/payroll.ts` → `/payroll/*`. Folders organize code; keep filenames unique across `routes/`.
 - No background jobs in-process (serverless); use `workers/` on a separate server or an external queue.
 - Zod schemas go in the prepare phase, outside the request handler. Throw `Response.forbidden(...)` etc. for error responses.
 
