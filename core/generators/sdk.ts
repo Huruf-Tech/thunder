@@ -6,6 +6,7 @@ import { basename } from "@std/path/basename";
 import { relative } from "@std/path/relative";
 import { exists } from "@std/fs/exists";
 import z from "zod";
+import ts from "typescript";
 import {
   createAuxiliaryTypeStore,
   createTypeAlias,
@@ -36,19 +37,140 @@ export type TSDKMethodDetails = {
 
 const globalTypesMap = new Map<string, string>();
 
+// Shared across routers so recursive schemas resolve to one `Auxiliary_N` type in types.ts
+const auxiliaryTypeStore = createAuxiliaryTypeStore();
+const pendingLabels = new Set<string>();
+
+/**
+ * Converts a zod schema to a TS type node. Never throws: any schema the
+ * converter can't handle (unknown/unsupported types, broken defs) becomes `unknown`
+ * at the smallest failing node, so one bad field doesn't sink the whole SDK.
+ */
+const schemaToTsNode = (
+  schema: z.z.core.$ZodType,
+  io: "input" | "output",
+  skip?: unknown,
+): ts.TypeNode => {
+  const overrideFunction: OptionalTypeOverrideFunction = (schema, ts) => {
+    // Let zod-to-ts convert the schema itself; its children come back through here
+    if (schema === skip) {
+      skip = undefined;
+      return;
+    }
+
+    const meta = "meta" in schema && typeof schema.meta === "function"
+      ? (schema.meta() as Record<string, unknown> | undefined)
+      : undefined;
+
+    /**
+     * Manual escape hatch:
+     *
+     * z.string()
+     *   .transform((v) => new Date(v))
+     *   .meta({ tsType: "Date" })
+     */
+    if (typeof meta?.tsType === "string") {
+      return ts.factory.createTypeReferenceNode(
+        ts.factory.createIdentifier(meta.tsType),
+      );
+    }
+
+    const def = (schema as any)._zod?.def;
+
+    // Transforms carry no type info. For output schemas use meta.tsType for correctness.
+    if (def?.type === "transform" || def?.type === "custom") {
+      return ts.factory.createKeywordTypeNode(ts.SyntaxKind.UnknownKeyword);
+    }
+
+    // z.string().transform(...) as an output: fall back to the input side
+    if (
+      def?.type === "pipe" && io === "output" &&
+      def.out?._zod?.def?.type === "transform"
+    ) {
+      return schemaToTsNode(def.in, io);
+    }
+
+    // { [K in Key]: Value } — same as Record<Key, Value>, but allowed in recursive types (e.g. z.json())
+    if (def?.type === "record") {
+      return ts.factory.createMappedTypeNode(
+        undefined,
+        ts.factory.createTypeParameterDeclaration(
+          undefined,
+          "K",
+          schemaToTsNode(def.keyType, io),
+        ),
+        undefined,
+        undefined,
+        schemaToTsNode(def.valueType, io),
+        undefined,
+      );
+    }
+
+    if (typeof meta?.tsLabel === "string") {
+      if (
+        !globalTypesMap.has(meta.tsLabel) && !pendingLabels.has(meta.tsLabel)
+      ) {
+        pendingLabels.add(meta.tsLabel);
+
+        globalTypesMap.set(
+          meta.tsLabel,
+          printNode(
+            createTypeAlias(schemaToTsNode(schema, io, schema), meta.tsLabel),
+          ),
+        );
+
+        pendingLabels.delete(meta.tsLabel);
+      }
+
+      return ts.factory.createTypeReferenceNode(
+        ts.factory.createIdentifier(meta.tsLabel),
+      );
+    }
+
+    // Convert each node in its own call so failures stay local to it
+    return schemaToTsNode(schema, io, schema);
+  };
+
+  try {
+    return zodToTs(schema, { auxiliaryTypeStore, overrideFunction, io }).node;
+  } catch (error) {
+    auxiliaryTypeStore.definitions.delete(schema);
+
+    console.warn(
+      `SDK: Unsupported schema type "${
+        (schema as any)?._zod?.def?.type
+      }", falling back to unknown.`,
+      error instanceof Error ? error.message : error,
+    );
+
+    return ts.factory.createKeywordTypeNode(ts.SyntaxKind.UnknownKeyword);
+  }
+};
+
+const resolveShapes = (
+  handler: unknown,
+  name: string,
+): THandlerIOShapes | undefined => {
+  if (
+    typeof handler === "object" && handler !== null && "shape" in handler &&
+    typeof handler.shape === "function"
+  ) {
+    try {
+      return handler.shape();
+    } catch (error) {
+      console.warn(`Failed to resolve the shape of handler "${name}"!`, error);
+    }
+  }
+};
+
 export const routerToMethods = (router: Router, opts?: {
   skipBuildTypes?: boolean;
 }) => {
-  const auxiliaryTypeStore = createAuxiliaryTypeStore();
   const methods: Record<string, TSDKMethodDetails> = {};
 
   for (const [_, { fullPath, methods: httpMethods }] of router["registry"]) {
     for (const [httpMethod, { name, handler }] of Object.entries(httpMethods)) {
-      let shapes: THandlerIOShapes | undefined;
-
-      if (typeof handler === "object" && typeof handler.shape === "function") {
-        shapes = handler.shape();
-      }
+      const shapes = resolveShapes(handler, name);
 
       methods[name] = {
         method: httpMethod as TMethod,
@@ -67,122 +189,10 @@ export const routerToMethods = (router: Router, opts?: {
           if (!shape) continue;
           if (skipBody && key === "body") continue;
 
-          const overrideFunction: (
-            root?: z.z.core.$ZodType,
-          ) => OptionalTypeOverrideFunction = (root) => (schema, ts) => {
-            const ioType = key === "return" ? "output" : "input";
-
-            const meta = "meta" in schema && typeof schema.meta === "function"
-              ? (schema.meta() as Record<string, unknown> | undefined)
-              : undefined;
-
-            /**
-             * Manual escape hatch:
-             *
-             * z.string()
-             *   .transform((v) => new Date(v))
-             *   .meta({ tsType: "Date" })
-             */
-            if (typeof meta?.tsType === "string") {
-              return ts.factory.createTypeReferenceNode(
-                ts.factory.createIdentifier(meta.tsType),
-              );
-            }
-
-            /**
-             * Handle Zod transform / pipe / effects-like schemas.
-             *
-             * For input schemas, unwrap to the inner input schema.
-             * For output schemas, you need meta.tsType for correctness.
-             */
-            const def = (schema as any).def ?? (schema as any)._def;
-
-            if (
-              def?.type === "transform" ||
-              def?.type === "pipe" ||
-              def?.type === "effects" ||
-              def?.typeName === "ZodEffects" ||
-              def?.typeName === "ZodPipe" ||
-              def?.typeName === "ZodTransform"
-            ) {
-              const innerSchema = def.schema ??
-                def.innerType ??
-                def.in ??
-                def.input ??
-                def.left;
-
-              if (innerSchema) {
-                const result = zodToTs(innerSchema, {
-                  auxiliaryTypeStore,
-                  overrideFunction: overrideFunction(innerSchema),
-                  io: ioType,
-                });
-
-                return result.node;
-              }
-
-              return ts.factory.createKeywordTypeNode(
-                ts.SyntaxKind.UnknownKeyword,
-              );
-            }
-
-            if (schema instanceof z.ZodRecord) {
-              const def = schema.def;
-
-              const keySchema = def.keyType;
-              const valueSchema = def.valueType;
-
-              const keyResult = zodToTs(keySchema, {
-                auxiliaryTypeStore,
-                overrideFunction: overrideFunction(keySchema),
-                io: ioType,
-              });
-
-              const valueResult = zodToTs(valueSchema, {
-                auxiliaryTypeStore,
-                overrideFunction: overrideFunction(valueSchema),
-                io: ioType,
-              });
-
-              return ts.factory.createTypeReferenceNode(
-                ts.factory.createIdentifier("Record"),
-                [keyResult.node, valueResult.node],
-              );
-            }
-
-            if (schema instanceof z.ZodCustom) {
-              return ts.factory.createKeywordTypeNode(
-                ts.SyntaxKind.UnknownKeyword,
-              );
-            }
-
-            if (
-              typeof meta?.tsLabel === "string" &&
-              root !== schema
-            ) {
-              if (!globalTypesMap.has(meta.tsLabel)) {
-                const { node } = zodToTs(schema, {
-                  auxiliaryTypeStore,
-                  overrideFunction: overrideFunction(schema),
-                  io: ioType,
-                });
-
-                const typeAlias = createTypeAlias(node, meta.tsLabel);
-
-                globalTypesMap.set(meta.tsLabel, printNode(typeAlias));
-              }
-
-              return ts.factory.createTypeReferenceNode(
-                ts.factory.createIdentifier(meta.tsLabel),
-              );
-            }
-          };
-
-          const { node } = zodToTs(shape, {
-            auxiliaryTypeStore,
-            overrideFunction: overrideFunction(),
-            io: key === "return" ? "output" : "input",
-          });
+          const node = schemaToTsNode(
+            shape,
+            key === "return" ? "output" : "input",
+          );
 
           const typeAlias = createTypeAlias(node, `${name}$${key}`);
 
@@ -225,6 +235,10 @@ export const generateModules = async (
       metadata: router.metadata,
       methods,
     };
+  }
+
+  for (const { identifier, node } of auxiliaryTypeStore.definitions.values()) {
+    if (node) globalTypesMap.set(identifier.text, printNode(node));
   }
 
   return { modules, globalTypesMap };
@@ -277,9 +291,12 @@ export const generateNpmModule = async (opts: {
   await writeTextFile(
     scriptPath,
     `
-    import { build, emptyDir } from "jsr:@deno/dnt";
+    import { build } from "jsr:@deno/dnt";
 
-    await emptyDir("./npm");
+    // Keep npm/node_modules between builds so dnt's npm install is a quick no-op
+    for (const dir of ["esm", "script", "src"]) {
+      await Deno.remove("./npm/" + dir, { recursive: true }).catch(() => {});
+    }
 
     await build({
       entryPoints: [
@@ -298,6 +315,7 @@ export const generateNpmModule = async (opts: {
         // see JS docs for overview and more options
         deno: true,
       },
+      test: false,
       package: ${JSON.stringify(packageJSON)},
     });
     `,
@@ -448,13 +466,25 @@ export const generateSDKContent = async (
 
   await Promise.all(
     Object.entries(modules).map(async ([filename, details]) => {
+      const source = Object.values(details.methods)
+        .flatMap(({ types }) => Object.values(types))
+        .join("\n");
+
+      // Import only the global types this module uses, so a change to an unrelated
+      // type doesn't rewrite every module (and force a full npm rebuild)
+      const types = new Map(
+        Array.from(globalTypesMap).filter(([name]) =>
+          new RegExp(`\\b${RegExp.escape(name)}\\b`).test(source)
+        ),
+      );
+
       files[join("modules", filename)] = await ejsRender(
         moduleTemplate,
         {
           ...context,
           ...details,
           filename,
-          types: globalTypesMap,
+          types,
         },
       );
     }),
@@ -467,7 +497,7 @@ export const generateSDKContent = async (
   });
 
   const { pluginNames, pluginFiles } = await syncPluginContent({
-    pluginDir: join(opts?.cwd, opts?.pluginDir ?? "./sdk-plugins"),
+    pluginDir: join(cwd, opts?.pluginDir ?? "./sdk-plugins"),
     sdkDir: outputPath,
   });
 
@@ -485,13 +515,29 @@ export const generateSDKContent = async (
   });
 
   if (!opts?.skipWrite) {
-    await Promise.all(
-      Object.entries(files).map(([filename, content]) =>
-        writeTextFile(join(outputPath, filename), content)
-      ),
+    // Only touch files whose content changed, so a re-run with no changes skips the npm build
+    const changes = await Promise.all(
+      Object.entries(files).map(async ([filename, content]) => {
+        const path = join(outputPath, filename);
+        const current = await Deno.readTextFile(path).catch(() => undefined);
+
+        if (current === content) return false;
+
+        await writeTextFile(path, content);
+
+        return true;
+      }),
     );
 
-    if (!opts?.skipNpmBuild) {
+    const tarballPath = join(outputPath, "package.tgz");
+
+    if (
+      !opts?.skipNpmBuild &&
+      (changes.includes(true) || !await exists(tarballPath))
+    ) {
+      // A failed build must not leave a stale tarball that makes the next run skip
+      await Deno.remove(tarballPath).catch(() => {});
+
       await generateNpmModule({
         version,
         sdkDir: outputPath,

@@ -229,9 +229,8 @@ export default new Router("/api/", function users(router) {
 
 Use `path-to-regexp` syntax:
 - `:id` - Named parameter
-- `:id?` - Optional parameter
 - `{/*path}` - Wildcard (captures rest of path as array)
-- `{/:id}` - Optional segment
+- `{/:id}` - Optional segment (path-to-regexp v8 has **no** `:id?` syntax — it throws)
 
 ```typescript
 router.get("/users/:userId/posts/:postId", function getPost() { ... });
@@ -1447,6 +1446,192 @@ Publish to GitHub and consumers can install with:
 ```bash
 deno task add:plugin -n myorg/thunder-plugin-email
 ```
+
+## OpenAPI & SDK Generation
+
+Both generators are driven entirely by the **`shape()`** of each handler (see
+"Router with Validation (Shapes)"). A handler without `shape()` is still
+generated, but untyped (`unknown`). Keep shapes accurate — they are the API
+contract for every client.
+
+```bash
+deno task generate:openapi [-t title] [-v version]   # → public/www/openapi-spec.json
+deno task generate:sdk [-n name] [-v 0.0.1] [--overwrite]  # → public/www/sdk@{version}/
+deno task generate:sdk:plugin -n myPlugin [-v version] [--overwrite] # → sdk-plugins/myPlugin/
+```
+
+`generate:sdk` refuses to touch an existing `sdk@{version}` folder unless you
+pass `--overwrite` (or bump `-v`). Regenerate after every route/schema change;
+**never hand-edit generated files**.
+
+### How a route becomes an SDK method
+
+```typescript
+// routes/users.ts
+export default new Router("/api/", function users(router) {
+  router.post("/", function create() { ... shape: () => ({ body, return }) });
+  router.get("/:id", function get() { ... shape: () => ({ params, query, return }) });
+}).group("Users");
+```
+
+| Route side | SDK side |
+| --- | --- |
+| Router function name `users` | Module `ThunderSDK.users` (file `modules/users.ts`) |
+| Handler function name `create` | Method `ThunderSDK.users.create(...)`, permission action `users.create` |
+| Route **filename** + endpoint | Request URL `users/api/` (relative to `axiosConfig.baseURL`) |
+| `shape().params / query / body` | Types `create$params`, `create$query`, `create$body` (zod **input** types) |
+| `shape().return` | Type `create$return` (zod **output** type) — what `await` resolves to |
+| `.group("Users")` / `router.metadata` | `ThunderSDK.getGroup("users")` / `ThunderSDK.getMetadata("users")` |
+
+- `body` is only emitted for `post`, `put` and `patch`. `headers` shapes are
+  documented in OpenAPI but **not** typed in the SDK (pass headers via
+  `axiosConfig`).
+- The method's `data` argument is required whenever the shape has params, query
+  or body (even if all their fields are optional).
+- `createCRUD` stores the JSON Schemas (`schema`, `insertSchema`,
+  `updateSchema`, incl. `.meta({ ref })` foreign references) in
+  `router.metadata.crud`; that is what `getMetadata()` returns to clients.
+
+### Controlling generated types
+
+Zod → TypeScript conversion follows these rules:
+
+- **`.meta({ tsType: "Date" })`** — escape hatch: the field is typed as that
+  exact TS type (used by `$objectId`, which becomes `string`). Use it on any
+  `.transform()`/`z.custom()` whose type you care about.
+- **`.meta({ tsLabel: "User" })`** — hoists the schema into a named, shared
+  type `User` in `types.ts` (also reused across modules). Use it for entities
+  referenced in many places; it keeps the SDK smaller and readable. Labels must
+  be valid TS identifiers and unique project-wide (if two different schemas
+  share a label, the first one wins).
+- `.transform()` has no static type: as an **input** it is `unknown`; as an
+  **output** of `z.x().transform(...)` it falls back to the input type
+  (`z.string().transform(Number)` returns `string`) — add `tsType` if wrong.
+- Pipes/preprocess (`z.preprocess`, `z.coerce`, `.pipe()`, codecs) use the
+  input side for requests and the output side for `return`.
+- `z.record(K, V)` → `{ [K in Key]: V }` (same as `Record`, recursion-safe).
+- Recursive schemas (getters, `z.lazy`, `z.json()`) become `Auxiliary_N` types
+  in `types.ts`; give them a `tsLabel` for a readable name.
+- Anything unsupported (e.g. `z.function()`, `z.custom()` without `tsType`)
+  becomes `unknown` **for that field only**, with a `SDK: Unsupported schema
+  type ...` warning. A `shape()` that throws is skipped with a warning. The
+  generator never fails because of a schema.
+
+### OpenAPI specifics
+
+- Tag = router function name; `router.all(...)` is documented as `get`;
+  optional path segments (`{/:id}`) are expanded into multiple paths.
+- Types JSON Schema can't express (transforms in responses, bigint, map, set,
+  symbol, function, …) become an empty (any) schema; `z.date()` becomes
+  `string` / `date-time`; `z.custom()` uses `meta.tsType` (default `string`).
+- If an operation still can't be represented, only that part is loosened
+  (body/return → any, params/query/headers → their keys as strings) and a
+  `OpenAPI: The "..." schema of "..." cannot be represented` warning is
+  printed. Fix the schema (or add `.meta()`) when you see it.
+
+### Output layout
+
+```
+public/www/sdk@0.0.1/
+├── base.ts          # BaseSDK runtime: axios, caching, permissions (generated, identical for all projects)
+├── types.ts         # Shared/tsLabel/Auxiliary types + option types (TSDKOptions, TRequestOptions, …)
+├── modules/*.ts     # One per route file: request types + method implementations
+├── index.ts         # ThunderSDK class wiring modules + SDK plugins
+├── plugins/         # Copied from ./sdk-plugins
+├── deno.json        # Deno/JSR entry (deps: axios, path-to-regexp)
+├── npm/             # npm build (ESM + CommonJS + .d.ts) made by dnt — what generate:app links to
+└── package.tgz      # `npm pack` of npm/ — the distributable for other projects
+```
+
+Regeneration is incremental: only files whose content changed are rewritten,
+and the (slow, ~5–15s) npm build is **skipped entirely** when nothing changed
+and `package.tgz` exists. Any change rebuilds the whole npm package (dnt has no
+incremental mode). Deleting `package.tgz` forces a rebuild.
+
+### Using the SDK (client side)
+
+```typescript
+import { ThunderSDK } from "thunder-sdk"; // or the generated index.ts
+
+await ThunderSDK.init({
+  axiosConfig: { baseURL: "https://api.example.com/", headers: { authorization: "Bearer ..." } },
+  logs: false,  // true → logs every request payload
+  cache: {      // optional; required only if you use caching features
+    getter: (key) => localStorage.getItem(key) ?? undefined,
+    setter: (key, value) => (localStorage.setItem(key, value), true),
+    delete: (key) => (localStorage.removeItem(key), true),
+    keys: () => Object.keys(localStorage),
+  },
+});
+
+const user = await ThunderSDK.users.get({
+  params: { id },                        // numbers/arrays are stringified for the URL
+  query: { filters: { name: "john" } },  // nested objects → `filters[name]=john` (server parses with qs)
+  signal: abortController.signal,
+  axiosConfig: { timeout: 5000 },        // per-request axios overrides (header keys are lower-cased)
+  cacheKey: ["users", id],               // optional response caching (see below)
+  cacheTTL: 60,                          // seconds, or (data, timestamp) => seconds
+});
+
+type CreateBody = typeof ThunderSDK.users.type.create$body; // reuse request/response types
+```
+
+- A method call returns a **lazy thenable**, not a Promise: nothing is sent
+  until you `await`/`.then()` it, and **each** `await` sends a new request.
+  `.data` → `Promise<return type>`, `.raw` → `Promise<AxiosResponse>` (use it
+  for status/headers). Non-2xx responses reject with the axios error.
+- Calling any method before `init()` throws `Axios not initialized!`.
+- **Permissions:** every method calls `ThunderSDK.checkPermission(module,
+  action)` before sending. Override `ThunderSDK.isPermitted = (scope, action)
+  => boolean` to hide/deny actions client-side (UI convenience only — the
+  server must still enforce auth). `ThunderSDK.listActions(module?)` lists all
+  `module.action` names, e.g. to build a permissions UI.
+- Introspection: `getModuleNames()`, `hasModule(name)`, `getModule(name)`,
+  `getGroup(module)`, `hasGroup(moduleOrGroup)`, `getMetadata(module)`.
+- `ThunderSDK.clean()` runs plugin `clean()`s, **deletes all SDK cache keys**
+  (when a cache adapter with `delete` + `keys` is configured) and
+  un-initializes the SDK (e.g. on logout).
+
+### SDK caching
+
+Cache entries are JSON `{ value, timestamp, expired? }` stored through your
+`cache` adapter under `__thunder-sdk:cache:<key parts joined by ":">`.
+
+- **Per request** (`cacheKey` option): returns the cached value while it is
+  fresh; otherwise fetches and stores the result. If the request **fails** and a
+  cached (even expired) value exists, that value is returned instead of
+  throwing (offline-friendly).
+- **`ThunderSDK.useCaching(cacheKey, ({ signal }) => fetcher, { cacheTTL })`**
+  returns a shared handle (same key → same handle):
+  - `get()` — cached-or-fetch. Concurrent `get()`s within 1s share one
+    in-flight request; a call after that aborts the stale one and refetches.
+  - `expire()` — marks the entry expired (next `get()` refetches, the old value
+    remains as error fallback); `del()` removes it.
+  - `invalidate()` — expire + refetch now; resolves with fresh data.
+  - `onExpire/offExpire`, `onInvalidate/offInvalidate(cb)` — subscribe (e.g.
+    to re-render UI).
+  - **Hierarchical keys:** `expire()`/`invalidate()` on `["users"]` also
+    applies to every handle whose key starts with `users:` (e.g.
+    `["users", id]`). Pass `{ stopPropagation: true }` to affect only itself.
+- `ThunderSDK.withCaching((handle, key) => ..., { matcher: /users/ })` iterates
+  live handles; `getCache/setCache/expireCache/delCache/cacheKeys/clearCache`
+  are the low-level primitives.
+
+### SDK plugins (client-side extensions)
+
+Use an SDK plugin to ship client-only helpers (auth flows, upload helpers,
+socket clients) inside the generated SDK.
+
+1. `deno task generate:sdk:plugin -n auth` → creates `sdk-plugins/auth/`
+   (`deno.json` + `entry.ts`). The name must be a valid identifier (no dashes).
+2. `entry.ts` must export `class authEntry`. Optional `static init()` and
+   `static clean()` run during `ThunderSDK.init()` / `clean()`.
+3. Import the SDK only via `"thunder-sdk"` (rewritten to a relative path when
+   copied). The plugin must be self-contained: no imports from the backend
+   (`@/...`), since it runs in the client.
+4. Next `generate:sdk` copies it to `plugins/auth/`; use it as
+   `ThunderSDK.plugins.auth`. Files are copied as text (`.git`, `.vscode`,
+   `node_modules` are skipped), so keep binary assets out of SDK plugins.
 
 ## Available Tasks
 

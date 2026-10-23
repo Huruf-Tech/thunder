@@ -23,7 +23,7 @@ export class ThunderSDK extends BaseSDK {
     ];
     
 <% for (const [, { name }] of Object.entries(modulesToImport)) { -%>
-    static <%- name %> = <%- name %>Module(this);
+    static <%- name %>: ReturnType<typeof <%- name %>Module> = <%- name %>Module(this);
 <% } -%>
 
     static override plugins = {
@@ -110,8 +110,8 @@ export class ThunderSDK extends BaseSDK {
             const unpackModules: string[] = [];
 
             this.getModuleNames().forEach((name) => {
-                Object.keys(this.getModule(name)).forEach((action) => {
-                    unpackModules.push(`${name}.${action}`);
+                Object.entries(this.getModule(name)).forEach(([action, fn]) => {
+                    if (typeof fn === "function") unpackModules.push(`${name}.${action}`);
                 });
             });
 

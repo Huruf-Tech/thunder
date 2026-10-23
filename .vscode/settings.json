@@ -15,8 +15,7 @@
     "Sendgrid",
     "surrealdb",
     "treeify",
-    "unrepresentable",
-    "vectra"
+    "unrepresentable"
   ],
   "deno.enable": true
 }

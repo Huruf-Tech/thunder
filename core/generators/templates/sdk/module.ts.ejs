@@ -57,7 +57,7 @@ export const <%- name %>Module = (sdk: typeof BaseSDK) => {
             const toPath = compile("<%- filename.split(".ts")[0] %><%- endpoint %>");
             const requestPayload = {
                 method,
-                url: toPath(data?.params),
+                url: toPath(sdk.resolvePathParams(data?.params)),
                 params: data?.query,
                 data: data?.body,
                 signal: data?.signal,
