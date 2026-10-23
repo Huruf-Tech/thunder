@@ -130,6 +130,10 @@ export const $objectId = z.preprocess((val) => {
 
 const emptyArray: any[] = [];
 
+const $idString = z.string().refine((id) => ObjectId.isValid(id), {
+  message: "Invalid id",
+});
+
 export const paginatedAggregation = (
   query: z.infer<typeof paginationSchema>,
 ) => [
@@ -177,6 +181,12 @@ export const createCRUD = <
     },
     ...details.router.metadata,
   };
+
+  const projectionStages = opts?.projection
+    ? Array.isArray(opts.projection)
+      ? opts.projection.map(($project) => ({ $project }))
+      : [{ $project: opts.projection }]
+    : emptyArray;
 
   if (!opts?.disable?.create) {
     details.router.post("/", function create() {
@@ -249,13 +259,26 @@ export const createCRUD = <
         handler: async (req: Request) => {
           const query = $query.parse(queryAsJson(req));
 
-          const count = await details.model.countDocuments({
-            ...(query.filters ? normalizeFilters(query.filters) : {}),
-            ...(query.subFilters ? normalizeFilters(query.subFilters) : {}),
-            ...(await opts?.isolationFields?.(req, "count") as any),
-          });
+          // Same stages as GET: client filters run after the projection, so they
+          // can't probe hidden fields (e.g. a regex oracle on a projected-out password)
+          const [result] = await details.model.aggregate<{ count: number }>([
+            {
+              $match:
+                (await opts?.isolationFields?.(req, "count") ?? {}) as any,
+            },
+            ...projectionStages,
+            ...(query.filters
+              ? [{ $match: normalizeFilters(query.filters) }]
+              : emptyArray),
+            ...(query.subFilters
+              ? [{ $match: normalizeFilters(query.subFilters) }]
+              : emptyArray),
+            { $count: "count" },
+          ]).toArray();
 
-          return Response.json({ count } satisfies z.output<typeof $return>);
+          return Response.json(
+            { count: result?.count ?? 0 } satisfies z.output<typeof $return>,
+          );
         },
       };
     });
@@ -264,7 +287,7 @@ export const createCRUD = <
   if (!opts?.disable?.get) {
     details.router.get("{/:id}", function get() {
       const $params = z.object({
-        id: z.string().optional(),
+        id: $idString.optional(),
       });
       const $query = paginationSchema;
       const $return = z.object({
@@ -290,11 +313,7 @@ export const createCRUD = <
                 ...(await opts?.isolationFields?.(req, "get")),
               } as any,
             },
-            ...(opts?.projection
-              ? Array.isArray(opts.projection)
-                ? opts.projection.map(($project) => ({ $project }))
-                : [{ $project: opts.projection }]
-              : emptyArray),
+            ...projectionStages,
             ...paginatedAggregation(query),
           ]);
 
@@ -309,7 +328,7 @@ export const createCRUD = <
   }
 
   const $params = z.object({
-    id: z.string(),
+    id: $idString,
   });
 
   if (!opts?.disable?.update) {
@@ -338,10 +357,15 @@ export const createCRUD = <
 
             $set.updatedAt = new Date();
 
+            const isolation = await opts?.isolationFields?.(req, "update");
+
+            // Isolation fields scope the update; the body must not be able to change them
+            for (const key of Object.keys(isolation ?? {})) delete $set[key];
+
             const results = await details.model.updateOne(
               {
                 _id,
-                ...(await opts?.isolationFields?.(req, "update")),
+                ...isolation,
               } as any,
               {
                 $set,
@@ -358,8 +382,8 @@ export const createCRUD = <
                 data: $set,
                 session,
               }, req);
-            } else if (!results.modifiedCount) {
-              throw new Error("No record updated!", { cause: results });
+            } else if (!results.matchedCount) {
+              throw Response.notFound("No record updated!");
             }
           };
 
@@ -399,7 +423,7 @@ export const createCRUD = <
                 session,
               }, req);
             } else if (!results.deletedCount) {
-              throw new Error("No record deleted!", { cause: results });
+              throw Response.notFound("No record deleted!");
             }
           };
 
@@ -445,7 +469,7 @@ export const expressionSchema = z.object({
   $gte: clientValueSchema,
   $lt: clientValueSchema,
   $lte: clientValueSchema,
-  $mod: z.tuple([z.number(), z.number()]),
+  $mod: z.tuple([z.coerce.number(), z.coerce.number()]),
   $regex: clientValueSchema,
   $in: z.array(clientValueSchema),
   $nin: z.array(clientValueSchema),
@@ -455,7 +479,7 @@ export const expressionSchema = z.object({
 export const $expression = expressionSchema;
 
 export const basicFilterSchema = z.record(
-  z.string(),
+  z.string().regex(/^[^$]/, "Filter field names may not start with $"),
   z.union([z.object({ $not: expressionSchema }), expressionSchema]),
 ).meta({ tsLabel: "TBasicFilter" });
 
@@ -464,7 +488,7 @@ export const $basicFilter = basicFilterSchema;
 export const multiFilterSchema = z.object({
   $and: z.array(basicFilterSchema),
   $or: z.array(basicFilterSchema),
-}).partial().meta({ tsLabel: "TMultiFilters" });
+}).partial().strict().meta({ tsLabel: "TMultiFilters" });
 
 export const $multiFilter = multiFilterSchema;
 
@@ -479,9 +503,14 @@ export const paginationSchema = z.object(
     subFilters: filtersSchema.optional().describe(
       "Client side sub-filters (Just a second layer of filters)",
     ),
-    offset: z.coerce.number().min(0).default(0),
-    limit: z.coerce.number().min(1).max(2000).default(2000),
-    sort: z.record(z.string(), z.coerce.number().min(-1).max(1)).default({
+    offset: z.coerce.number().int().min(0).default(0),
+    limit: z.coerce.number().int().min(1).max(2000).default(2000),
+    sort: z.record(
+      z.string(),
+      z.coerce.number().refine((v) => v === 1 || v === -1, {
+        message: "Sort direction must be 1 or -1",
+      }),
+    ).default({
       _id: -1,
     })
       .describe(
@@ -509,6 +538,14 @@ export const $pagination = paginationSchema;
 
 const MAX_FILTER_PATTERN_LENGTH = 200;
 
+const assertPatternLength = (pattern: string) => {
+  if (pattern.length > MAX_FILTER_PATTERN_LENGTH) {
+    throw Response.badRequest(
+      `A filter pattern may not exceed ${MAX_FILTER_PATTERN_LENGTH} characters!`,
+    );
+  }
+};
+
 export const normalizeFilterExpression = (
   value?: string | number | boolean | z.output<typeof clientValueSchema>,
 ) => {
@@ -517,28 +554,41 @@ export const normalizeFilterExpression = (
       case "boolean":
         return ["true", "1"].includes(value.value);
 
-      case "date":
-        return value.value.startsWith("nldate:")
+      case "date": {
+        const date = value.value.startsWith("nldate:")
           ? parseDate(value.value.replace(/^nldate:/, ""))
           : new Date(value.value);
+
+        if (!date || isNaN(date.getTime())) {
+          throw Response.badRequest(`Invalid date filter "${value.value}"!`);
+        }
+
+        return date;
+      }
 
       case "number":
         return Number(value.value);
 
       case "objectId":
+        if (!ObjectId.isValid(value.value)) {
+          throw Response.badRequest(
+            `Invalid objectId filter "${value.value}"!`,
+          );
+        }
+
         return new ObjectId(value.value);
 
       case "regex":
         // Bounded because the pattern comes from the client and is run both
         // here and by mongod. A length cap only raises the cost of a
         // catastrophically backtracking pattern; it does not remove it.
-        if (value.value.length > MAX_FILTER_PATTERN_LENGTH) {
-          throw Response.badRequest(
-            `A filter pattern may not exceed ${MAX_FILTER_PATTERN_LENGTH} characters!`,
-          );
-        }
+        assertPatternLength(value.value);
 
-        return new RegExp(value.value, value.options?.regexFlags);
+        try {
+          return new RegExp(value.value, value.options?.regexFlags);
+        } catch {
+          throw Response.badRequest(`Invalid regex filter "${value.value}"!`);
+        }
 
       case "null":
         return null;
@@ -566,6 +616,10 @@ export const normalizeFilters = (
     for (const [key, value] of Object.entries(expr)) {
       if (key === "$not") newExpr[key] = transform(value);
       else {
+        if (key === "$regex" && typeof value === "string") {
+          assertPatternLength(value);
+        }
+
         newExpr[key] = value instanceof Array
           ? value.map(normalizeFilterExpression)
           : normalizeFilterExpression(value);
@@ -611,7 +665,7 @@ export const testFilters = <T extends Record<string, unknown>>(
       const value = data[key];
 
       try {
-        if (Array.isArray(expression)) {
+        if (Array.isArray(expression) && operator !== "$mod") {
           const targets = expression.map(normalizeFilterExpression).map(String);
 
           // Arrays survive flattening intact, so compare element by element.
@@ -637,7 +691,9 @@ export const testFilters = <T extends Record<string, unknown>>(
               break;
           }
         } else {
-          const target = normalizeFilterExpression(expression);
+          const target = Array.isArray(expression)
+            ? expression // $mod: [divisor, remainder]
+            : normalizeFilterExpression(expression);
 
           switch (operator) {
             case "$exists":
@@ -667,7 +723,7 @@ export const testFilters = <T extends Record<string, unknown>>(
               break;
             case "$mod":
               // @ts-ignore
-              success = value % target[0] === target[1];
+              success = Number(value) % Number(target[0]) === Number(target[1]);
               break;
             case "$regex":
               // @ts-ignore
@@ -739,5 +795,6 @@ export const testFilters = <T extends Record<string, unknown>>(
     );
   }
 
-  return false;
+  // Only $and was given and every branch passed
+  return pass;
 };

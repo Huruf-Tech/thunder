@@ -20,7 +20,8 @@ export class Env {
    * Get the type of current environment (development, production, test etc.)
    */
   static getType() {
-    const Target = Deno.env.get("ENV_TYPE") as EnvType | undefined;
+    const Target = (Deno.env.get("ENV_TYPE") ??
+      Env.readEnvFile(".env").ENV_TYPE) as EnvType | undefined;
 
     return Target && Object.values(EnvType).includes(Target)
       ? Target
@@ -43,29 +44,30 @@ export class Env {
   static getAll<T extends Record<string, string>>(): T {
     if (Env.configuration) return Env.configuration as T;
 
-    let GlobalEnv: Record<string, string>;
-
-    try {
-      GlobalEnv = parse(Deno.readTextFileSync(join(Deno.cwd(), `./.env`)));
-    } catch {
-      GlobalEnv = {};
-    }
-
-    let ScopedEnv: Record<string, string>;
-
-    try {
-      ScopedEnv = parse(
-        Deno.readTextFileSync(join(Deno.cwd(), `./.env.${Env.getType()}`)),
-      );
-    } catch {
-      ScopedEnv = {};
-    }
-
+    // Real process env (e.g. secrets set by the hosting platform) wins over .env files
     return (Env.configuration = {
+      ...Env.readEnvFile(".env"),
+      ...Env.readEnvFile(`.env.${Env.getType()}`),
       ...Deno.env.toObject(),
-      ...GlobalEnv,
-      ...ScopedEnv,
     }) as T;
+  }
+
+  private static envFiles = new Map<string, Record<string, string>>();
+
+  private static readEnvFile(name: string): Record<string, string> {
+    let content = Env.envFiles.get(name);
+
+    if (!content) {
+      try {
+        content = parse(Deno.readTextFileSync(join(Deno.cwd(), name)));
+      } catch {
+        content = {};
+      }
+
+      Env.envFiles.set(name, content);
+    }
+
+    return content;
   }
 
   /**
@@ -183,7 +185,7 @@ export class Env {
     key: string,
     silent = true,
   ) {
-    return JSON.parse(await this.get(key, silent as true) ?? "") as T;
+    return JSON.parse(await this.get(key, silent as true) ?? "{}") as T;
   }
 
   /**
@@ -278,6 +280,6 @@ export class Env {
     key: string,
     silent = true,
   ) {
-    return JSON.parse(this.getSync(key, silent as true) ?? "") as T;
+    return JSON.parse(this.getSync(key, silent as true) ?? "{}") as T;
   }
 }

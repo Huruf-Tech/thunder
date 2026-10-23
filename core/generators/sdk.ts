@@ -291,7 +291,7 @@ export const generateNpmModule = async (opts: {
   await writeTextFile(
     scriptPath,
     `
-    import { build } from "jsr:@deno/dnt";
+    import { build } from "jsr:@deno/dnt@0.42.3";
 
     // Keep npm/node_modules between builds so dnt's npm install is a quick no-op
     for (const dir of ["esm", "script", "src"]) {

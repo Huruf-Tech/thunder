@@ -1,6 +1,8 @@
 import { exists } from "@std/fs/exists";
 import { parseQueryParams } from "@/core/utils/parseQueryParams.ts";
 import { join } from "@std/path/join";
+import { resolve } from "@std/path/resolve";
+import { SEPARATOR } from "@std/path/constants";
 import { serveFile } from "@std/http/file-server";
 import { indexFileCache, paramsMap } from "./constants.ts";
 import type { IParseOptions } from "qs";
@@ -61,6 +63,19 @@ const getIndexFile = async (root: string) => {
   return IndexFile;
 };
 
+// Asset roots don't disappear at runtime; caching hits saves a stat per root per request.
+// Misses are re-checked, so a root created later (e.g. a generated app) is picked up.
+const knownRoots = new Set<string>();
+
+const rootExists = async (root: string) => {
+  if (knownRoots.has(root)) return true;
+  if (!await exists(root)) return false;
+
+  knownRoots.add(root);
+
+  return true;
+};
+
 /**
  * Serves `filePath` from the first root that has it. Falls back to the
  * index file of the first root that has one (SPA routing).
@@ -73,12 +88,18 @@ export const serveAssets = async (
   const existingRoots: string[] = [];
 
   for (const root of [roots].flat()) {
-    if (await exists(root)) existingRoots.push(root);
+    if (await rootExists(root)) existingRoots.push(root);
   }
 
-  if (filePath) {
+  // A NUL byte can't be in a real path (and makes the fs APIs throw)
+  if (filePath && !filePath.includes("\0")) {
     for (const root of existingRoots) {
-      const res = await serveFile(req, join(root, filePath));
+      const path = resolve(root, filePath);
+
+      // Path params are decoded, so `..%2F` could otherwise escape the root (e.g. to .env)
+      if (!path.startsWith(resolve(root) + SEPARATOR)) continue;
+
+      const res = await serveFile(req, path);
       if (res.status !== 404) return res;
     }
   }
@@ -93,12 +114,25 @@ export const serveAssets = async (
 
 export const parseBasicAuth = (req: Request) => {
   const authorization = req.headers?.get("authorization");
-  const base64Credentials = authorization?.replace(/^Basic\s+/i, "");
+  const base64Credentials = authorization?.match(/^Basic\s+(.+)$/i)?.[1];
 
   if (!base64Credentials) return null;
 
-  const credentials = atob(base64Credentials);
-  const [username, password] = credentials.split(":");
+  let credentials: string;
 
-  return { username, password } as const;
+  try {
+    credentials = atob(base64Credentials);
+  } catch {
+    return null;
+  }
+
+  // The password may itself contain ":" (RFC 7617)
+  const separator = credentials.indexOf(":");
+
+  if (separator === -1) return null;
+
+  return {
+    username: credentials.slice(0, separator),
+    password: credentials.slice(separator + 1),
+  } as const;
 };

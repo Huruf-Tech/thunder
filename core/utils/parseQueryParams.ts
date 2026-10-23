@@ -2,4 +2,4 @@
 import qs from "qs";
 
 export const parseQueryParams = (str: string, opts?: qs.IParseOptions) =>
-  qs.parse(str, { ignoreQueryPrefix: true, ...opts });
+  qs.parse(str, { ignoreQueryPrefix: true, depth: 10, ...opts });

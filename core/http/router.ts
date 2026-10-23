@@ -23,6 +23,12 @@ export type THandlerOpts = {
 export type TPreparedHandler = THandlerOpts | THandler;
 export type TPrepareHandler = () => TPreparedHandler;
 export type TMethod = "get" | "post" | "patch" | "put" | "delete" | "all";
+type THandlerDetails = {
+  name?: string;
+  handler?: TPreparedHandler;
+  /** Methods the path supports, when it matched but the method didn't (405) */
+  allow?: string[];
+};
 export type TRouteExecutor = (req: Request) => Promise<Response> | Response;
 
 export type TRegisterMethod = (
@@ -66,6 +72,7 @@ export class Router {
       fullPath: string;
       endpoint: string;
       isStatic: boolean;
+      staticKey: string;
       parser: MatchFunction<Record<string, string>>;
       methods: {
         [K in TMethod]?: {
@@ -125,8 +132,14 @@ export class Router {
     this.name = fn.name;
 
     if (rootPath) {
+      const root = rootPath.replace(/^\/|\/$/g, "");
+
       this.rootPath = rootPath;
-      this.parser = match(`/${rootPath.replace(/^\/|\/$/g, "")}{*__endpoint}`);
+      // `{/*__endpoint}` only matches on a segment boundary (`/api` must not match `/apifoo`).
+      // Segments stay encoded here; the endpoint matcher decodes them exactly once.
+      this.parser = match(`${root ? `/${root}` : ""}{/*__endpoint}`, {
+        decode: false,
+      });
     }
 
     // deno-lint-ignore no-explicit-any
@@ -171,6 +184,7 @@ export class Router {
         // Static endpoints carry no path-to-regexp tokens, so they can be
         // matched with a plain string compare instead of running the regex.
         isStatic: !/[:*{}()?]/.test(endpoint),
+        staticKey: toStaticKey(endpoint),
         parser: match(endpoint),
         methods: {
           [resolvedMethod]: {
@@ -226,12 +240,23 @@ export class Router {
       return error;
     }
 
+    // Unexpected errors would otherwise be invisible in production logs
+    console.error(`Unhandled error in router "${this.name}":`, error);
+
+    // Internal details (DB errors, paths) are only exposed in development/test.
+    // Throw a Response (e.g. Response.badRequest("...")) for messages meant for clients.
+    if (!Env.is(EnvType.DEVELOPMENT, EnvType.TEST)) {
+      return Response.json({
+        error: { message: "Internal Server Error" },
+      }, { status: 500 });
+    }
+
     return Response.json({
       error: error instanceof Error
         ? {
           message: error.message,
           name: error.name,
-          stack: Env.is(EnvType.DEVELOPMENT) ? error.stack : undefined,
+          stack: error.stack,
         }
         : error,
     }, { status: 500 });
@@ -240,14 +265,16 @@ export class Router {
   protected async runPreHooksAndHandler(
     req: Request,
     hooks: THook[],
-    details:
-      | {
-        name?: string;
-        handler?: TPreparedHandler;
-      }
-      | undefined,
+    details: THandlerDetails | undefined,
     routeMatch: MatchResult<Record<string, string>> | undefined,
   ): Promise<Response> {
+    // Set before pre hooks so they can read path params (e.g. auth checks on :id)
+    if (routeMatch) {
+      paramsMap.set(req, routeMatch.params);
+    } else {
+      paramsMap.delete(req);
+    }
+
     for (const hook of hooks) {
       if (typeof hook.pre === "function") {
         const hookRes = await hook.pre({
@@ -260,31 +287,28 @@ export class Router {
       }
     }
 
-    if (routeMatch) {
-      paramsMap.set(req, routeMatch.params);
-    } else {
-      paramsMap.delete(req);
-    }
-
     const handler = details?.handler;
 
     if (typeof handler === "function") {
       return await handler(req);
     }
 
-    return await handler?.handler(req) ??
-      new Response("Request handler not found", { status: 404 });
+    if (handler) return await handler.handler(req);
+
+    if (details?.allow?.length) {
+      return new Response("Method Not Allowed", {
+        status: 405,
+        headers: { Allow: details.allow.join(", ") },
+      });
+    }
+
+    return new Response("Request handler not found", { status: 404 });
   }
 
   protected async execute(
     req: Request,
     hooks: THook[],
-    details:
-      | {
-        name?: string;
-        handler?: TPreparedHandler;
-      }
-      | undefined,
+    details: THandlerDetails | undefined,
     routeMatch: MatchResult<Record<string, string>> | undefined,
   ): Promise<Response> {
     try {
@@ -318,10 +342,7 @@ export class Router {
   }
 
   protected handle = (
-    details?: {
-      name?: string;
-      handler?: TPreparedHandler;
-    },
+    details?: THandlerDetails,
     routeMatch?: MatchResult<Record<string, string>>,
   ) => {
     return (req: Request, hooks: THook[] = EMPTY_HOOKS) =>
@@ -342,10 +363,18 @@ export class Router {
 
       if (!routeMatch) return;
 
+      // With `decode: false` the wildcard comes back as the raw "a/b" string
+      const rest = routeMatch.params.__endpoint as
+        | string
+        | string[]
+        | undefined;
+
       targetEndpoint = "/" +
-        ((routeMatch.params.__endpoint as unknown as Array<string> | undefined)
-          ?.filter(Boolean).join("/") ?? "");
+        [rest ?? []].flat().join("/").split("/").filter(Boolean).join("/");
     }
+
+    const targetKey = toStaticKey(targetEndpoint);
+    const allowed = new Set<string>();
 
     for (const routing of this.registry.values()) {
       // Static endpoints skip the regex and match by string equality; dynamic
@@ -354,7 +383,7 @@ export class Router {
       let routeMatch: MatchResult<Record<string, string>> | undefined;
 
       if (routing.isStatic) {
-        if (routing.endpoint !== targetEndpoint) continue;
+        if (routing.staticKey !== targetKey) continue;
         routeMatch = STATIC_MATCH;
       } else {
         const matched = routing.parser(targetEndpoint);
@@ -367,13 +396,22 @@ export class Router {
       if (handlerObj) {
         return this.handle(handlerObj, routeMatch);
       }
+
+      for (const m of Object.keys(routing.methods)) {
+        allowed.add(m.toUpperCase());
+        if (m === "get") allowed.add("HEAD");
+      }
     }
 
-    return this.handle();
+    return this.handle(allowed.size ? { allow: [...allowed] } : undefined);
   }
 }
 
 const EMPTY_HOOKS: THook[] = [];
+
+// Same semantics as path-to-regexp's defaults: case-insensitive, optional trailing slash
+const toStaticKey = (endpoint: string) =>
+  (endpoint.replace(/\/+$/, "") || "/").toLowerCase();
 
 const STATIC_MATCH: MatchResult<Record<string, string>> = {
   path: "",

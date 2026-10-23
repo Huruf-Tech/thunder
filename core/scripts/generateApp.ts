@@ -155,7 +155,8 @@ export const generateApp = async (options: {
 
     const updatedPackageJSON = deepMergeUnique(packageJSON, tempPackageJSON);
 
-    (updatedPackageJSON.dependencies ??= {})["thunder-sdk"] = `file:///${
+    // `file:<relative>`: npm reads `file:///...` as an absolute path (`/../x` → `/x` on Linux/macOS)
+    (updatedPackageJSON.dependencies ??= {})["thunder-sdk"] = `file:${
       normalize(relative(AppPath, sdkPath)).replaceAll("\\", "/")
     }/npm`;
 

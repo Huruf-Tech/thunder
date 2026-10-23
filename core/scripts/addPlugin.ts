@@ -11,14 +11,21 @@ import { denoConfigPath, readDenoConfig } from "../utils/denoConfig.ts";
 import { EnvType } from "../utils/env.ts";
 import { setupPlugin } from "./setupPlugin.ts";
 
-export const resolvePluginName = (name: string) =>
-  name
-    .split("/")
-    .filter(Boolean)
-    .join("/")
-    .split("\\")
-    .filter(Boolean)
-    .join("\\");
+export const resolvePluginName = (name: string) => {
+  const segments = name.split(/[\\/]/).filter(Boolean);
+
+  // e.g. "..", "org/../..", "." or a bare org name would resolve outside a single plugin folder
+  if (
+    segments.length !== 2 ||
+    segments.some((s) => s === "." || s === ".." || !/^[\w.-]+$/.test(s))
+  ) {
+    throw new Error(
+      `Invalid plugin name "${name}"! Expected the format "org/plugin-name".`,
+    );
+  }
+
+  return segments.join("/");
+};
 
 export const addPluginToImportMap = async (
   name: string,
@@ -129,6 +136,8 @@ export const addPlugin = async (options: {
   name: string;
   setup?: boolean | EnvType[];
   prompt?: boolean;
+  /** Seconds before the script is killed. Default: no timeout (scripts may run long migrations). */
+  timeout?: number;
   dryRun?: boolean;
 }) => {
   const Options = z.object({
@@ -180,12 +189,13 @@ export const addPlugin = async (options: {
         ? Options.setup
         : [EnvType.PRODUCTION],
       prompt: options.prompt,
+      timeout: options.timeout,
     });
   }
 };
 
 if (import.meta.main) {
-  const { name, n, setup } = parse(Deno.args);
+  const { name, n, setup, timeout } = parse(Deno.args);
 
   const resolvedSetup = typeof setup === "string"
     ? setup?.split(",").map((env: string) => env.trim())
@@ -194,6 +204,7 @@ if (import.meta.main) {
   await addPlugin({
     name: name ?? n,
     setup: resolvedSetup,
+    timeout,
     prompt: true,
   });
 

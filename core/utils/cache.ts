@@ -55,6 +55,9 @@ function getRegistryEntry(fn: AnyFn): RegistryEntry {
   return entry;
 }
 
+/** Per cached function; protects against unbounded growth from user-controlled arguments. */
+const MAX_TTL_ENTRIES = 10_000;
+
 interface TtlEntry {
   value: unknown;
   expiresAt: number;
@@ -98,6 +101,12 @@ function createTtlCached<T extends AnyFn>(fn: T, ttl: number): CachedFn<T> {
 
     const result = fn(...args);
     const entry: TtlEntry = { value: result, expiresAt: now + ttl };
+
+    // Evict the oldest entry (Map keeps insertion order) once full
+    if (!store.has(key) && store.size >= MAX_TTL_ENTRIES) {
+      store.delete(store.keys().next().value!);
+    }
+
     store.set(key, entry);
     scheduleSweep();
 

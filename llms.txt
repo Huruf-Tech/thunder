@@ -392,6 +392,9 @@ DATABASE_URL=mongodb://username:password@localhost:27017/my-db
 # Environment type
 ENV_TYPE=development
 
+# Max request body size (optional, default 10mb; bytes or kb/mb/gb)
+# MAX_REQUEST_BODY_SIZE=10mb
+
 # Plugin-specific variables
 # (Each plugin documents its required vars - errors will tell you which ones)
 ```
@@ -401,6 +404,11 @@ Env files supported:
 - `.env.development` - Loaded in development
 - `.env.production` - Loaded in production
 - `.env.test` - Loaded in test
+
+Precedence (highest first): real process environment (e.g. secrets set by
+your hosting platform) → `.env.{ENV_TYPE}` → `.env`. `ENV_TYPE` itself is read
+from the process environment, falling back to `.env`; when unset it is
+`production`. Files are read once per process.
 
 ### Accessing Environment Variables in Code
 
@@ -784,10 +792,14 @@ export const findRouter = memoize(
 );
 ```
 
-- **`cache()` is deduplicated per `(fn, ttl)` or `(fn, keyObject)` pair** —
-  calling it twice with the same function and the same ttl hands back the *same*
-  cached function, so calling it inline inside a handler is safe and does not
-  need hoisting to module scope. A different ttl is a separate cache.
+- **`cache()` is deduplicated per `(fn, ttl)` or `(fn, keyObject)` pair, by
+  function _reference_** — passing the same function and ttl again hands back
+  the same cached function. An inline arrow (`cache(async () => ..., 60_000)`
+  inside a handler) is a *new* function on every call and therefore never hits:
+  define ttl-cached functions at module scope (or in the prepare phase). A
+  different ttl is a separate cache.
+- A ttl cache keeps at most 10,000 entries per cached function (oldest evicted
+  first), so caching on user-controlled arguments can't exhaust memory.
 - **A rejected promise is evicted from the cache**, so failed async work retries
   on the next call instead of the rejection being served until it expires. True
   for both `cache` and `memoize`.
@@ -1020,17 +1032,30 @@ Rules:
 Errors are automatically caught and formatted:
 - `ZodError` → 400 with validation details
 - `Response` thrown → returned as-is
-- `Error` → 500 with message (stack only in development)
+- Any other error → 500, logged with `console.error`. The response body is
+  `{ "error": { "message": "Internal Server Error" } }` in production/staging;
+  message, name and stack are only included when `ENV_TYPE` is `development`
+  or `test` (so DB/internal details never leak to clients).
 
 ```typescript
-// Throw Response for custom error responses
+// Throw a Response for any error the CLIENT should see (message is preserved everywhere)
 if (!authorized) {
   throw Response.forbidden("Access denied");
 }
 
-// Regular errors become 500
+// Unexpected errors become a generic 500 in production
 throw new Error("Something went wrong");
 ```
+
+The router also answers, without any code from you:
+- `404` — no route matches the path.
+- `405 Method Not Allowed` (with an `Allow` header) — the path exists but not
+  for this method.
+- `HEAD` — handled by the route's GET handler, without a body.
+- `400` — malformed percent-encoding in the URL.
+- `413 Payload Too Large` — the request body exceeds `MAX_REQUEST_BODY_SIZE`
+  (default `10mb`; accepts bytes or `kb`/`mb`/`gb`, e.g.
+  `MAX_REQUEST_BODY_SIZE=50mb`). It applies to every request, uploads included.
 
 ## Critical: Never Edit `core/` or `plugins/`
 
@@ -1068,9 +1093,20 @@ deno task update:core
 ```
 
 This pulls the latest framework files from the official Thunder repository
-(`Huruf-Tech/thunder`) and overwrites the managed files (primarily `core/` and
-`serve.base.ts`). Because it overwrites these files, this is exactly why you must
-NOT edit them manually (see the section above).
+(`Huruf-Tech/thunder`):
+
+- `core/` is always overwritten — this is exactly why you must NOT edit it
+  manually (see the section above).
+- Other managed files (`serve.base.ts`, `llms.txt`, `llms-full.txt`,
+  `CLAUDE.md`, `docs/`, `tests/`, `.vscode/thunder.code-snippets`,
+  `thunder.README.md`) are only overwritten **after asking** when your copy
+  differs (Overwrite / Skip / Overwrite all / Skip all). Identical files are
+  skipped silently.
+- Template files missing from your project are created.
+- Changes to `deno.json` (imports, tasks, …) are listed and applied only after
+  you confirm. Your project `name` is always kept.
+- If git reports "Already up to date", nothing is synced; pass `--forceSync` to
+  re-sync anyway (e.g. after an interrupted update).
 
 Recommended workflow:
 
@@ -1083,8 +1119,13 @@ Recommended workflow:
 Keep installed plugins up to date as well:
 
 ```bash
-deno task update:plugin -n org/plugin-name
+deno task update:plugin -n org/plugin-name [--setup[=env,...]]
 ```
+
+`update:plugin` moves the installed version aside, installs the new one and
+**restores the previous version** (files + `deno.json`) if fetching or copying
+fails. `--setup` runs the plugin's setup script only after a successful update;
+it never runs the cleanup script.
 
 ## Plugin System
 
@@ -1229,6 +1270,15 @@ When the consumer triggers setup/cleanup, Thunder executes the script **once per
 environment**, spawning `deno run -A <script>` with `ENV_TYPE` set to that environment.
 This is what lets the script connect to the correct database (development vs production)
 when creating indexes. If a plugin has no lifecycle script, setup/cleanup is a safe no-op.
+
+Scripts have **no time limit** by default (migrations and index builds can be slow). Pass
+`--timeout=<seconds>` to `setup:plugin`, `add:plugin --setup`, `update:plugin --setup` or
+`remove:plugin --clean` (e.g. in CI) to kill a script that runs longer; the error then names
+the plugin and environment and warns that the script may have partially applied.
+
+**Write lifecycle scripts to be safe to run more than once** (idempotent): use
+`createIndex` (a no-op when the index exists), upserts instead of inserts for seed data, and
+check before migrating. A script that was killed or failed can then simply be run again.
 
 #### Writing a setup script (index creation example)
 
@@ -1647,10 +1697,10 @@ deno task generate:sdk     # Generate TypeScript SDK
 deno task generate:app     # Generate a dashboard app in public folder (based on the boilerplate repo: github.com/Huruf-Tech/thunder-ui)
 
 # Plugin management
-deno task add:plugin    -n org/plugin-name [--setup[=env,...]]  # Install (optionally run setup)
-deno task setup:plugin  -n org/plugin-name [--envs=env,...]     # Run a plugin's setup lifecycle (indexes/seeds/migrations)
-deno task update:plugin -n org/plugin-name                      # Update an installed plugin
-deno task remove:plugin -n org/plugin-name [--clean[=env,...]]  # Remove (optionally run cleanup lifecycle)
+deno task add:plugin    -n org/plugin-name [--setup[=env,...]] [--timeout=s]  # Install (optionally run setup)
+deno task setup:plugin  -n org/plugin-name [--envs=env,...] [--timeout=s]     # Run a plugin's setup lifecycle (indexes/seeds/migrations)
+deno task update:plugin -n org/plugin-name [--setup[=env,...]] [--timeout=s]  # Update an installed plugin (rolls back on failure)
+deno task remove:plugin -n org/plugin-name [--clean[=env,...]] [--timeout=s]  # Remove (optionally run cleanup lifecycle)
 ```
 
 ## Common Patterns
@@ -1783,8 +1833,12 @@ const hex = await createHash(SupportedHashAlg.SHA_256, "data");
 const b64 = await createHashBase64(SupportedHashAlg.SHA_256, "data");
 const hexSync = createHashSync(SupportedHashAlg.SHA_256, "data");
 
-// Manual verification:
-const isMatch = (await createHash(SupportedHashAlg.SHA_256, input)) === stored;
+// Verification: compare in constant time (=== leaks timing for tokens/API keys)
+import { timingSafeEqual } from "node:crypto";
+
+const a = new TextEncoder().encode(await createHash(SupportedHashAlg.SHA_256, input));
+const b = new TextEncoder().encode(stored);
+const isMatch = a.length === b.length && timingSafeEqual(a, b);
 ```
 
 ### parseQueryParams

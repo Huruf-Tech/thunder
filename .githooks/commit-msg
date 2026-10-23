@@ -2,11 +2,15 @@
 set -e
 
 MSG_FILE="$1"
-MSG="$(cat "$MSG_FILE")"
+# Only the subject line is checked (a matching line in the body doesn't count)
+SUBJECT="$(head -n1 "$MSG_FILE")"
+
+# Git's own merge/revert messages are always allowed
+echo "$SUBJECT" | grep -Eq '^(Merge|Revert) ' && exit 0
 
 # Very small Conventional Commits pattern (customize to your needs)
 # Examples: feat: ..., fix(api): ..., chore!: ...
-echo "$MSG" | grep -Eq '^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert|debug)(\([a-z0-9_-]+\))?(!)?: .+' || {
+echo "$SUBJECT" | grep -Eq '^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert|debug)(\([a-z0-9_-]+\))?(!)?: .+' || {
   echo ""
   echo "[commit-msg] Invalid commit message."
   echo "Expected: type(scope)?: subject  (e.g., feat(api): add auth)"

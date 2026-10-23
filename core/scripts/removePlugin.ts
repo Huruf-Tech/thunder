@@ -22,21 +22,28 @@ export const removePluginFromImportMap = async (
   await writeJSONFile(denoConfigPath, targetConfig);
 };
 
+const ignoreNotFound = (error: unknown) => {
+  if (!(error instanceof Deno.errors.NotFound)) throw error;
+};
+
 export const unlinkPlugin = async (name: string, opts?: { cwd?: string }) => {
   const cwd = opts?.cwd ?? Deno.cwd();
   const targetPath = join(cwd, "plugins", name);
 
-  await Deno.remove(targetPath, { recursive: true });
+  await Deno.remove(targetPath, { recursive: true }).catch(ignoreNotFound);
 
   await removePluginFromImportMap(name);
 
-  await Deno.remove(join(cwd, "./sdk-plugins", name), { recursive: true });
+  await Deno.remove(join(cwd, "./sdk-plugins", name), { recursive: true })
+    .catch(ignoreNotFound);
 };
 
 export const removePlugin = async (options: {
   name: string;
   clean?: boolean | EnvType[];
   prompt?: boolean;
+  /** Seconds before the script is killed. Default: no timeout (scripts may run long migrations). */
+  timeout?: number;
 }) => {
   const Options = await z.object({
     name: z.optional(z.string()),
@@ -53,22 +60,24 @@ export const removePlugin = async (options: {
 
   const resolvedPluginName = resolvePluginName(Options.name);
 
-  await unlinkPlugin(resolvedPluginName);
-
+  // The cleanup script lives inside the plugin folder, so it must run before unlinking
   if (Options.clean) {
     await setupPlugin({
-      name: Options.name,
+      name: resolvedPluginName,
       envs: Options.clean instanceof Array
         ? Options.clean
         : [EnvType.PRODUCTION],
       clean: true,
       prompt: options.prompt,
+      timeout: options.timeout,
     });
   }
+
+  await unlinkPlugin(resolvedPluginName);
 };
 
 if (import.meta.main) {
-  const { name, n, clean } = parse(Deno.args);
+  const { name, n, clean, timeout } = parse(Deno.args);
 
   const resolvedClean = typeof clean === "string"
     ? clean?.split(",").map((env: string) => env.trim())
@@ -77,6 +86,7 @@ if (import.meta.main) {
   await removePlugin({
     name: name ?? n,
     clean: resolvedClean,
+    timeout,
     prompt: true,
   });
 

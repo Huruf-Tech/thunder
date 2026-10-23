@@ -32,6 +32,9 @@ export const deepObjectToFlatten = (
   }, {});
 };
 
+// Path segments that would write into Object.prototype
+const UNSAFE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
 export const dotNotationToDeepObject = (obj: Record<string, any>) => {
   const result: Record<string, any> = {};
 
@@ -41,6 +44,8 @@ export const dotNotationToDeepObject = (obj: Record<string, any>) => {
 
     for (let i = 0; i < keys.length; i++) {
       const k = keys[i];
+
+      if (UNSAFE_KEYS.has(k)) break;
 
       if (i === keys.length - 1) {
         currentObj[k] = obj[key];
@@ -181,7 +186,9 @@ export const setObjectValue = <T extends Record<string, any>, O = T>(
   let current = obj;
 
   Keys.forEach((k: keyof T, index) => {
-    if (index === keys.length - 1) current[k] = value;
+    if (UNSAFE_KEYS.has(k as string)) return;
+
+    if (index === Keys.length - 1) current[k] = value;
     else current = current[k] ??= {} as T[string];
   });
 

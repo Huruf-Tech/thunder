@@ -88,6 +88,9 @@ export const lintStaged = async (options: {
 
         await sh(fullCommand);
       }
+
+      // Formatters may have rewritten these files; re-stage only them
+      await sh(["git", "add", "--", ...matchedFiles]);
     }
   }
 };

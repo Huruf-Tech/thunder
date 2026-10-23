@@ -4,7 +4,15 @@ export const listPlugins = async () => {
   const pluginsDir = join(Deno.cwd(), "./plugins");
   const plugins = [];
 
-  for await (const entry of Deno.readDir(pluginsDir)) {
+  // No plugins/ folder simply means no plugins
+  const entries = await Array.fromAsync(Deno.readDir(pluginsDir)).catch(
+    (error) => {
+      if (error instanceof Deno.errors.NotFound) return [];
+      throw error;
+    },
+  );
+
+  for (const entry of entries) {
     if (entry.isDirectory) {
       for await (
         const pluginEntry of Deno.readDir(join(pluginsDir, entry.name))

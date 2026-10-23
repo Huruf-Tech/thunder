@@ -6,6 +6,7 @@ import { EnvType } from "../utils/env.ts";
 import { join } from "node:path";
 import { exists } from "@std/fs/exists";
 import { sh } from "./lib/sh.ts";
+import { resolvePluginName } from "./addPlugin.ts";
 
 export const setupPlugin = async (options: {
   name: string;
@@ -13,12 +14,15 @@ export const setupPlugin = async (options: {
   denoParams?: string[];
   clean?: boolean;
   prompt?: boolean;
+  /** Seconds before the script is killed. Default: no timeout (scripts may run long migrations). */
+  timeout?: number;
 }) => {
   const Options = await z.object({
     name: z.optional(z.string()),
     envs: z.optional(z.array(z.enum(EnvType))),
     denoParams: z.optional(z.array(z.string())),
     clean: z.optional(z.boolean()),
+    timeout: z.optional(z.coerce.number().positive()),
   }).parse(options);
 
   if (options.prompt) {
@@ -45,7 +49,7 @@ export const setupPlugin = async (options: {
   const targetScriptPath = join(
     Deno.cwd(),
     "./plugins/",
-    Options.name,
+    resolvePluginName(Options.name),
     `./scripts/${Options.clean ? "cleanupPlugin" : "setupPlugin"}.ts`,
   );
   const scriptExists = await exists(targetScriptPath);
@@ -59,29 +63,41 @@ export const setupPlugin = async (options: {
   for (const env of Options.envs) {
     const controller = new AbortController();
 
-    const timeout = setTimeout(() => {
-      controller.abort();
-    }, 30000);
+    const timeout = Options.timeout
+      ? setTimeout(() => controller.abort(), Options.timeout * 1000)
+      : undefined;
 
-    await sh([
-      "deno",
-      "run",
-      ...(Options.denoParams ?? ["-A"]),
-      targetScriptPath,
-    ], {
-      signal: controller.signal,
-      cwd: Deno.cwd(),
-      env: {
-        ENV_TYPE: env,
-      },
-    });
+    try {
+      await sh([
+        "deno",
+        "run",
+        ...(Options.denoParams ?? ["-A"]),
+        targetScriptPath,
+      ], {
+        signal: controller.signal,
+        cwd: Deno.cwd(),
+        env: {
+          ENV_TYPE: env,
+        },
+      });
+    } catch (error) {
+      if (controller.signal.aborted) {
+        throw new Error(
+          `${
+            Options.clean ? "Cleanup" : "Setup"
+          } script for "${Options.name}" timed out after ${Options.timeout}s (env: ${env}); it may have partially applied.`,
+        );
+      }
 
-    clearTimeout(timeout);
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 };
 
 if (import.meta.main) {
-  const { name, n, envs, clean } = parse(Deno.args);
+  const { name, n, envs, clean, timeout } = parse(Deno.args);
 
   const resolvedEnvs = typeof envs === "string"
     ? envs?.split(",").map((env: string) => env.trim())
@@ -91,6 +107,7 @@ if (import.meta.main) {
     name: name ?? n,
     envs: resolvedEnvs,
     clean,
+    timeout,
     prompt: true,
   });
 

@@ -7,6 +7,7 @@ export const mergeDenoConfig = (
   const ResultConfig = deepMergeUnique(src, target);
 
   delete ResultConfig.id;
+  delete ResultConfig.name;
   delete ResultConfig.version;
   delete ResultConfig.title;
   delete ResultConfig.description;
