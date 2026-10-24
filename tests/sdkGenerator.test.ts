@@ -20,6 +20,7 @@ Deno.test("SDK generator survives unsupported and recursive schemas", () => {
             json: z.json(),
             tree: $tree,
             keyed: z.record(z.enum(["a", "b"]), z.number()),
+            strict: z.object({ x: z.string() }).strict(),
           }),
           return: z.string().transform(Number),
         }),
@@ -42,6 +43,8 @@ Deno.test("SDK generator survives unsupported and recursive schemas", () => {
   ok(methods.create.types.body!.includes("fn: unknown;"));
   ok(methods.create.types.body!.includes("tree: Tree;"));
   ok(methods.create.types.body!.includes('[K in "a" | "b"]: number;'));
+  // .strict() must not produce an index signature that conflicts with its properties (TS2411)
+  ok(!methods.create.types.body!.includes("[x: string]: never"));
   equal(methods.create.types.return, "type create$return = string;");
   equal(methods.broken.shapes, undefined);
 });

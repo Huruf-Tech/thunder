@@ -41,6 +41,26 @@ const globalTypesMap = new Map<string, string>();
 const auxiliaryTypeStore = createAuxiliaryTypeStore();
 const pendingLabels = new Set<string>();
 
+const isStrictObject = (schema: z.z.core.$ZodType) => {
+  const def = (schema as any)._zod?.def;
+
+  return def?.type === "object" && def.catchall?._zod?.def?.type === "never";
+};
+
+// Cached so a recursive strict object maps to one clone (keeps Auxiliary types working)
+const looseObjects = new WeakMap<object, z.z.core.$ZodType>();
+
+const toLooseObject = (schema: z.z.core.$ZodType) => {
+  let loose = looseObjects.get(schema);
+
+  if (!loose) {
+    loose = z.object((schema as any)._zod.def.shape);
+    looseObjects.set(schema, loose);
+  }
+
+  return loose;
+};
+
 /**
  * Converts a zod schema to a TS type node. Never throws: any schema the
  * converter can't handle (unknown/unsupported types, broken defs) becomes `unknown`
@@ -55,6 +75,15 @@ const schemaToTsNode = (
     // Let zod-to-ts convert the schema itself; its children come back through here
     if (schema === skip) {
       skip = undefined;
+
+      // .strict() objects: zod-to-ts would emit `[x: string]: never`, which every
+      // property violates (TS2411). Excess keys are rejected by TS object types anyway.
+      if (isStrictObject(schema)) {
+        const loose = toLooseObject(schema);
+
+        return schemaToTsNode(loose, io, loose);
+      }
+
       return;
     }
 
