@@ -54,6 +54,37 @@ const flaky = ThunderSDK.useCaching("flaky", async () => {
 await flaky.get().catch(() => {});
 result.retryAfterFailure = await flaky.get();
 
+const stored = (parts) => store.has(ThunderSDK.resolveCacheKey(parts));
+const registered = (parts) =>
+  ThunderSDK._useCachingMethods.has(ThunderSDK.resolveCacheKey(parts));
+
+for (const id of ["p1", "p2"]) {
+  await ThunderSDK.useCaching(["projects", id], async () => id).get();
+}
+await ThunderSDK.useCaching(["projects", "p1", "deployments"], async () => 1).get();
+await ThunderSDK.useCaching(["projects", "p1", "releases"], async () => 2).get();
+await ThunderSDK.home.status({ cacheKey: ["projects", "p1", "raw"] });
+
+const removed = await ThunderSDK.forgetCache(["projects", "p1"], { subKeys: true });
+result.forgetCacheRemoved = removed.map((k) => k.split(":").slice(-3).join(":")).sort();
+result.forgetCacheLeftovers = [
+  stored(["projects", "p1"]), stored(["projects", "p1", "deployments"]),
+  stored(["projects", "p1", "raw"]), registered(["projects", "p1", "releases"]),
+];
+result.forgetCacheKeepsSibling = stored(["projects", "p2"]) && registered(["projects", "p2"]);
+
+await ThunderSDK.useCaching(["projects", "p2", "deployments"], async () => 3).get();
+await ThunderSDK.forgetCache(["projects", "p2"]);
+result.forgetCacheExactOnly = !stored(["projects", "p2"]) && stored(["projects", "p2", "deployments"]);
+
+const handle = ThunderSDK.useCaching("single", async () => "v");
+await handle.get();
+let notified = false;
+handle.onExpire(() => (notified = true));
+result.forgetReturns = await handle.forget();
+await handle.expire();
+result.forgetState = [stored("single"), registered("single"), notified];
+
 ThunderSDK._cacheNamespaces.user = "u1";
 await ThunderSDK.clean();
 result.namespacesAfterClean = ThunderSDK._cacheNamespaces;
@@ -96,6 +127,19 @@ Deno.test("Generated SDK runtime", async () => {
     equal(result.childExpiredAfterInvalidate, false);
     equal(result.retryAfterFailure, "ok");
     equal(result.cleanWithoutCache, "ok");
+    equal(
+      JSON.stringify(result.forgetCacheRemoved),
+      '["cache:projects:p1","projects:p1:deployments","projects:p1:raw","projects:p1:releases"]',
+    );
+    equal(
+      JSON.stringify(result.forgetCacheLeftovers),
+      "[false,false,false,false]",
+    );
+    equal(result.forgetCacheKeepsSibling, true);
+    equal(result.forgetCacheExactOnly, true);
+    equal(result.forgetReturns, true);
+    // After forget, the handle's listeners no longer fire
+    equal(JSON.stringify(result.forgetState), "[false,false,false]");
     equal(
       JSON.stringify(result.namespacesAfterClean),
       '{"__internal":"__thunder-sdk:cache"}',

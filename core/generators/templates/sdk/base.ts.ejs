@@ -151,6 +151,42 @@ export class BaseSDK {
         return await this._options.cache.delete(this.resolveCacheKey(keys));
     }
 
+    /**
+     * Forgets the entry for `keys`; with `subKeys`, every registered entry under
+     * that prefix too. Returns the resolved keys it removed.
+     */
+    static async forgetCache(keys: TCacheKey, options?: { subKeys?: boolean }) {
+        if(typeof this._options?.cache?.delete !== "function")
+            throw new Error("A cache delete function is not defined!");
+
+        const prefix = this.resolveCacheKey(keys);
+        const matches = (key: string) =>
+            key === prefix || (!!options?.subKeys && key.startsWith(prefix + ":"));
+
+        const removed = new Set<string>();
+
+        // Registered useCaching handles: value, listeners and registration
+        for (const [key, methods] of this._useCachingMethods) {
+            if (matches(key)) {
+                await (methods as { forget(): Promise<boolean> }).forget();
+                removed.add(key);
+            }
+        }
+
+        // Plain cached values without a handle (e.g. a request's `cacheKey`)
+        const storedKeys = options?.subKeys && typeof this._options.cache.keys === "function"
+            ? (await this.cacheKeys(prefix)).filter(matches)
+            : [prefix];
+
+        for (const key of storedKeys) {
+            if (!removed.has(key) && await this._options.cache.delete(key)) {
+                removed.add(key);
+            }
+        }
+
+        return [...removed];
+    }
+
     static async clearCache() {
         if(typeof this._options?.cache?.delete !== "function")
             throw new Error("A cache delete function is not defined!");
@@ -322,7 +358,27 @@ export class BaseSDK {
             return data;
         }
 
-        const methods = { key: resolvedCacheKey, get, expire, del, invalidate, onInvalidate, offInvalidate, onExpire, offExpire };
+        /** Deletes the cached value, drops its invalidate/expire listeners and unregisters the key. */
+        const forget = async () => {
+            expireCallbacks.clear();
+            invalidateCallbacks.clear();
+
+            if (this._useCachingMethods.get(resolvedCacheKey) === methods) {
+                this._useCachingMethods.delete(resolvedCacheKey);
+            }
+
+            // An in-flight fetch would otherwise write the value back after it was forgotten
+            const activity = this._cachingActivity.get(resolvedCacheKey);
+
+            if (activity) {
+                activity.controller.abort("Forgotten");
+                this._cachingActivity.delete(resolvedCacheKey);
+            }
+
+            return await this.delCache(cacheKey);
+        };
+
+        const methods = { key: resolvedCacheKey, get, expire, del, forget, invalidate, onInvalidate, offInvalidate, onExpire, offExpire };
 
         this._useCachingMethods.set(resolvedCacheKey, methods);
 

@@ -1657,12 +1657,26 @@ Cache entries are JSON `{ value, timestamp, expired? }` stored through your
     in-flight request; a call after that aborts the stale one and refetches.
   - `expire()` — marks the entry expired (next `get()` refetches, the old value
     remains as error fallback); `del()` removes it.
+  - `forget()` — deletes the value, drops the handle's expire/invalidate
+    listeners, aborts its in-flight fetch and unregisters the key (the next
+    `useCaching()` with that key starts fresh). Use it when the data no longer
+    exists, e.g. after deleting the record.
   - `invalidate()` — expire + refetch now; resolves with fresh data.
   - `onExpire/offExpire`, `onInvalidate/offInvalidate(cb)` — subscribe (e.g.
     to re-render UI).
   - **Hierarchical keys:** `expire()`/`invalidate()` on `["users"]` also
     applies to every handle whose key starts with `users:` (e.g.
     `["users", id]`). Pass `{ stopPropagation: true }` to affect only itself.
+- `ThunderSDK.forgetCache(keys, { subKeys? })` — the same as `forget()` when
+  you only know the key. With `subKeys: true` it also forgets everything under
+  that prefix, including plain per-request `cacheKey` values (found via the
+  adapter's `keys()`). Resolves with the cache keys it removed.
+
+  ```typescript
+  await ThunderSDK.projects.delete({ params: { id } });
+  // removes ["projects", id], ["projects", id, "deployments"], ["projects", id, "releases"], …
+  await ThunderSDK.forgetCache(["projects", id], { subKeys: true });
+  ```
 - `ThunderSDK.withCaching((handle, key) => ..., { matcher: /users/ })` iterates
   live handles; `getCache/setCache/expireCache/delCache/cacheKeys/clearCache`
   are the low-level primitives.
