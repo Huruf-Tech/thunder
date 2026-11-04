@@ -1,6 +1,36 @@
 import axios, { type AxiosRequestConfig, type AxiosInstance, type AxiosResponse } from "axios";
 import type { TSDKOptions, TCacheKey, TCacheOptions } from "./types.ts";
 
+// Structural equality for JSON data: exits at the first difference and, unlike
+// comparing JSON.stringify output, builds no large strings (~3x faster when equal)
+const deepEqual = (a: any, b: any): boolean => {
+    if (a === b) return true;
+    if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
+
+    if (Array.isArray(a)) {
+        if (!Array.isArray(b) || a.length !== b.length) return false;
+
+        for (let i = 0; i < a.length; i++) {
+            if (!deepEqual(a[i], b[i])) return false;
+        }
+
+        return true;
+    }
+
+    if (Array.isArray(b)) return false;
+
+    let keys = 0;
+
+    for (const key in a) {
+        if (!Object.hasOwn(b, key) || !deepEqual(a[key], b[key])) return false;
+        keys++;
+    }
+
+    for (const _ in b) keys--;
+
+    return keys === 0;
+};
+
 export class BaseSDK {
     protected static _moduleGroup = new Map<object, string>();
     protected static _moduleMetadata = new Map<object, Record<string, unknown>>();
@@ -203,22 +233,25 @@ export class BaseSDK {
         return (await this._options.cache.keys()).filter(key => key.startsWith(startsWith ?? this.resolveCacheKey("")));
     }
 
+    /** Whether a cached entry needs refetching: marked expired, or older than `cacheTTL` (seconds). */
+    static isCacheStale<T>(cached: { value: T; timestamp: number; expired?: boolean }, options?: TCacheOptions<T>) {
+        if (cached.expired) return true;
+        if (!options?.cacheTTL) return false;
+
+        const ttl = typeof options.cacheTTL === "function"
+            ? options.cacheTTL(cached.value, cached.timestamp)
+            : options.cacheTTL;
+
+        return cached.timestamp + ttl < Date.now() / 1000;
+    }
+
     static async useCache<T>(callback: () => T | Promise<T>, options?: TCacheOptions<T>) {
         const Cached = options?.cacheKey ? await this.getCache<T>(options.cacheKey) : null;
 
         returnCache: if (Cached !== null) {
-            if(Cached.expired) break returnCache;
-            
-            if(
-                options?.cacheTTL && (
-                    Cached.timestamp + (
-                        typeof options.cacheTTL === "function"
-                        ? options.cacheTTL(Cached.value, Cached.timestamp)
-                        : options.cacheTTL
-                    )
-                ) < (Date.now() / 1000)
-            ) {
-                await this.expireCache(options.cacheKey!);
+            if (this.isCacheStale(Cached, options)) {
+                // Persist a TTL expiry so other readers see it too
+                if (!Cached.expired) await this.expireCache(options!.cacheKey!);
 
                 break returnCache;
             }
@@ -248,7 +281,10 @@ export class BaseSDK {
 
         if(_methods && !freshMethods) return _methods;
 
-        const get = () => {
+        const cacheOptions = { cacheKey, ...options };
+
+        /** `onFetched` runs only when data came from the callback (not from the cache) */
+        const load = (onFetched?: () => void) => {
             return this.useCache<T>(async () => {
                 const activity = this._cachingActivity.get(resolvedCacheKey);
 
@@ -256,7 +292,11 @@ export class BaseSDK {
                     if(Date.now() - activity.timestamp > 1000) {
                         activity.controller.abort("Repeated request!");
                     } else {
-                        return activity.resultPromise as Promise<T>;
+                        const result = await (activity.resultPromise as Promise<T>);
+
+                        onFetched?.();
+
+                        return result;
                     }
                 }
 
@@ -270,17 +310,20 @@ export class BaseSDK {
                 });
 
                 try {
-                    return await resultPromise;
+                    const result = await resultPromise;
+
+                    onFetched?.();
+
+                    return result;
                 } finally {
                     if (this._cachingActivity.get(resolvedCacheKey)?.resultPromise === resultPromise) {
                         this._cachingActivity.delete(resolvedCacheKey);
                     }
                 }
-            }, {
-                cacheKey,
-                ...options,
-            })
+            }, cacheOptions)
         };
+
+        const get = () => load();
 
         const isSubKey = (key: string, baseKey: string) => {
             const prefix = this.resolveCacheKey(baseKey);
@@ -378,7 +421,33 @@ export class BaseSDK {
             return await this.delCache(cacheKey);
         };
 
-        const methods = { key: resolvedCacheKey, get, expire, del, forget, invalidate, onInvalidate, offInvalidate, onExpire, offExpire };
+        const sdk = this;
+
+        /**
+         * "Show cached, then fresh": yields the cached value (even if expired), then the
+         * fetched value only if the cache was stale and the data actually changed.
+         * Nothing cached → yields the fetched value once. The loop ending means "up to date".
+         *
+         * for await (const data of handle.iterate()) render(data);
+         */
+        const iterate = async function* (): AsyncGenerator<T> {
+            const cached = await sdk.getCache<T>(cacheKey);
+
+            if (cached) {
+                yield cached.value;
+
+                // Fresh cache: nothing newer to show, no fetch, no comparison
+                if (!sdk.isCacheStale(cached, cacheOptions)) return;
+            }
+
+            let fetched = false;
+            const value = await load(() => (fetched = true));
+
+            // Not fetched = cache fallback after a failed request; unchanged = skip the re-render
+            if (!cached || (fetched && !deepEqual(value, cached.value))) yield value;
+        };
+
+        const methods = { key: resolvedCacheKey, get, iterate, expire, del, forget, invalidate, onInvalidate, offInvalidate, onExpire, offExpire };
 
         this._useCachingMethods.set(resolvedCacheKey, methods);
 

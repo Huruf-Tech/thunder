@@ -85,6 +85,46 @@ result.forgetReturns = await handle.forget();
 await handle.expire();
 result.forgetState = [stored("single"), registered("single"), notified];
 
+const collect = async (handle) => {
+  const values = [];
+  for await (const value of handle.iterate()) values.push(value);
+  return values;
+};
+
+let fetches = 0;
+let version = 1;
+let failNext = false;
+const swr = ThunderSDK.useCaching("swr", async () => {
+  fetches++;
+  if (failNext) throw new Error("offline");
+  return { version, items: Array.from({ length: 1000 }, (_, i) => ({ i })) };
+});
+await swr.get();
+
+// Expired + unchanged: refetched, nothing new to show → only the cached value
+await swr.expire();
+let values = await collect(swr);
+result.iterateUnchanged = [values.length, fetches];
+
+// Expired + changed: cached first, then the fresh value
+version = 2;
+await swr.expire();
+values = await collect(swr);
+result.iterateChanged = values.map((v) => v.version);
+
+// Fresh cache: one value, no fetch
+values = await collect(swr);
+result.iterateFresh = [values.length, fetches];
+
+// Expired + request fails: the cached value only (no duplicate)
+failNext = true;
+await swr.expire();
+values = await collect(swr);
+result.iterateFailed = [values.length, values[0].version];
+
+// Nothing cached: only the fetched value
+result.iterateEmpty = (await collect(ThunderSDK.useCaching("swr-empty", async () => 1))).length;
+
 ThunderSDK._cacheNamespaces.user = "u1";
 await ThunderSDK.clean();
 result.namespacesAfterClean = ThunderSDK._cacheNamespaces;
@@ -138,6 +178,11 @@ Deno.test("Generated SDK runtime", async () => {
     equal(result.forgetCacheKeepsSibling, true);
     equal(result.forgetCacheExactOnly, true);
     equal(result.forgetReturns, true);
+    equal(JSON.stringify(result.iterateUnchanged), "[1,2]");
+    equal(JSON.stringify(result.iterateChanged), "[1,2]");
+    equal(JSON.stringify(result.iterateFresh), "[1,3]");
+    equal(JSON.stringify(result.iterateFailed), "[1,2]");
+    equal(result.iterateEmpty, 1);
     // After forget, the handle's listeners no longer fire
     equal(JSON.stringify(result.forgetState), "[false,false,false]");
     equal(

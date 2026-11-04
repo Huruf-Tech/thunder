@@ -1655,6 +1655,16 @@ Cache entries are JSON `{ value, timestamp, expired? }` stored through your
   returns a shared handle (same key → same handle):
   - `get()` — cached-or-fetch. Concurrent `get()`s within 1s share one
     in-flight request; a call after that aborts the stale one and refetches.
+  - `iterate()` — async iterator for "show cached, then fresh" UIs. Yields the
+    cached value first (even if expired), then — only if the cache was stale
+    and the refetched data actually differs — the fresh value. A fresh cache,
+    unchanged data, or a failed refresh (cache fallback) yields nothing more,
+    so the UI never re-renders for nothing; the loop ending means "up to date".
+    With nothing cached, it yields the fetched value once.
+
+    ```typescript
+    for await (const projects of handle.iterate()) setProjects(projects);
+    ```
   - `expire()` — marks the entry expired (next `get()` refetches, the old value
     remains as error fallback); `del()` removes it.
   - `forget()` — deletes the value, drops the handle's expire/invalidate
