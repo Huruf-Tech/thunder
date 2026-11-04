@@ -342,4 +342,4 @@ This project and everyone participating in it is governed by our **[Code of Cond
 
 ## License
 
-Released under the [MIT License](./LICENSE). © 2026 Saif Ali Khan.
+Released under the [MIT License](./LICENSE). © 2026 Huruf-Tech.
