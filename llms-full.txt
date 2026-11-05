@@ -3,7 +3,8 @@
 > This file is an INSTRUCTION MANIFEST for AI agents. It does not contain the
 > documentation itself. Instead, it tells you which files to read in order to
 > build a COMPLETE mental model of this project: the Thunder framework core,
-> PLUS every installed plugin, PLUS every frontend app under `public/`.
+> PLUS every installed plugin, PLUS every frontend app under `public/`, PLUS the
+> native app under `native-app/` (if generated).
 
 ## How To Use This File (AI Agent Instructions)
 
@@ -98,6 +99,23 @@ context, and do not write source files into it.
 
 If `public/` contains no `llms.txt` files, skip this step.
 
+### Step 4 - Read the native app's instruction file (REQUIRED IF A NATIVE APP EXISTS)
+
+The React Native (Expo) app is generated into `native-app/` at the project root
+(`deno task generate:app --native`). If it exists, read:
+
+```
+./native-app/llms.txt
+```
+
+It plays the same role as a `public/*/llms.txt` for the mobile app: read it
+**before** writing or modifying any code under `native-app/`. The native app is
+a separate npm project — Thunder's Deno conventions (`@/` alias, named route
+functions, `deno task check`) do not apply inside it, and it consumes the
+backend through the generated `thunder-sdk` package.
+
+If `native-app/llms.txt` does not exist, skip this step.
+
 ## Reading Rules & Precedence
 
 1. **Core first, plugins second.** The root `llms.txt` defines the base
@@ -113,8 +131,8 @@ If `public/` contains no `llms.txt` files, skip this step.
 4. **Re-read on change.** Plugins can be added or removed at any time
    (`deno task add:plugin` / `deno task remove:plugin`). Re-run the discovery
    glob whenever the plugin set may have changed.
-5. **The frontend follows the backend contract.** A `public/*/llms.txt` governs
-   only its own app's UI. Where it describes calling the API, the backend is
+5. **The frontend follows the backend contract.** A `public/*/llms.txt` (or
+   `native-app/llms.txt`) governs only its own app's UI. Where it describes calling the API, the backend is
    authoritative: the routes, schemas and response shapes in the core
    `llms.txt` plus the plugin extensions win. If an app's instructions
    reference an endpoint or field the backend no longer exposes, flag the
@@ -154,6 +172,7 @@ build/working artifacts) and is NOT part of the project's source of truth.
 - [ ] Read `./llms.txt` (framework core).
 - [ ] Glob `./plugins/*/*/llms.extension.txt` and read each match.
 - [ ] Glob `./public/*/llms.txt` and read it for every frontend app you touch.
+- [ ] If `./native-app/llms.txt` exists, read it before touching the native app.
 - [ ] Merge the knowledge: core rules + per-plugin extensions + per-app frontend rules.
 - [ ] Apply core conventions everywhere; apply plugin rules only within their scope.
 - [ ] After installing/updating/removing ANY plugin, re-read its `llms.extension.txt` and refresh context.

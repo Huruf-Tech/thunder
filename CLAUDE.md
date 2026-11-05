@@ -8,7 +8,7 @@ Deno + MongoDB, serverless-first backend framework. File-based routing.
 
 1. [llms.txt](llms.txt) — source of truth for the framework (routing, hooks, validation, env, models, response helpers, code style). Always read before writing backend code.
 2. Glob `plugins/*/*/llms.extension.txt` — read every match. Plugin rules are *additive* and apply only in that plugin's scope; on conflict, core `llms.txt` wins and flag the discrepancy.
-3. Glob `public/*/llms.txt` — read the app's file before touching its UI. The backend contract (routes/schemas in `llms.txt` + plugin extensions) is authoritative; flag mismatches instead of inventing either side.
+3. Glob `public/*/llms.txt` (plus `native-app/llms.txt` if it exists) — read the app's file before touching its UI. The backend contract (routes/schemas in `llms.txt` + plugin extensions) is authoritative; flag mismatches instead of inventing either side.
 
 Re-run the plugin glob after any `deno task add:plugin` / `update:plugin` / `remove:plugin` — read the new `llms.extension.txt` (or its `routes/`, `hooks/`, `schemas/`, `.env.example` if missing) **before** writing code against it. Never guess a plugin's API from its name.
 
