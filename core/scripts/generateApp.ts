@@ -17,19 +17,26 @@ import { IPackageJSON } from "@/core/generators/sdk.ts";
 import { sh } from "@/core/scripts/lib/sh.ts";
 
 export const generateApp = async (options: {
+  native?: boolean;
   template?: string;
   forceSync?: boolean;
   prompt?: boolean;
 }) => {
   const Options = z.object({
     forceSync: z.boolean().optional().default(false),
+    native: z.boolean().optional().default(false),
     template: z.string().optional().default("master"),
   }).parse(options);
 
-  const RepositoryPath = "Huruf-Tech/thunder-ui";
+  const RepositoryPath = Options.native
+    ? "Huruf-Tech/thunder-native"
+    : "Huruf-Tech/thunder-ui";
+
+  const LocalAppPath = Options.native ? "./native-app" : "./public/app";
+
   const GitRepoUrl = new URL(RepositoryPath, "https://github.com");
   const TempPath = join(Deno.cwd(), "_temp", RepositoryPath);
-  const AppPath = join(Deno.cwd(), "./public/app");
+  const AppPath = join(Deno.cwd(), LocalAppPath);
   const Pull = existsSync(TempPath);
 
   const alreadyExists = await exists(AppPath);
@@ -69,6 +76,7 @@ export const generateApp = async (options: {
 
   syncApp: if (Status.success) {
     if (
+      alreadyExists &&
       !Options.forceSync &&
       Out.find((_) => _.includes("Already up to date"))
     ) break syncApp;
@@ -86,7 +94,7 @@ export const generateApp = async (options: {
         // Do not include .git folder
         if (
           !Entry.isDirectory &&
-          !/^(\\|\/)?(\.git)(\\|\/)?/.test(Entry.path.replace(TempPath, ""))
+          !/^(\\|\/)?\.git(\\|\/|$)/.test(Entry.path.replace(TempPath, ""))
         ) {
           const SourcePath = Entry.path;
           const TargetPath = SourcePath.replace(TempPath, AppPath);
@@ -155,30 +163,50 @@ export const generateApp = async (options: {
 
     const updatedPackageJSON = deepMergeUnique(packageJSON, tempPackageJSON);
 
+    // Web: symlinked build folder. Native: the packed tarball, because Metro can't
+    // resolve a symlink to a folder outside the app without extra watchFolders config.
+    const sdkTarget = Options.native ? "package.tgz" : "npm";
+
+    if (!await exists(join(sdkPath, sdkTarget))) {
+      throw new Error(
+        `SDK build not found at ${
+          join(sdkPath, sdkTarget)
+        }! Run "deno task generate:sdk --overwrite" first.`,
+      );
+    }
+
     // `file:<relative>`: npm reads `file:///...` as an absolute path (`/../x` → `/x` on Linux/macOS)
-    (updatedPackageJSON.dependencies ??= {})["thunder-sdk"] = `file:${
+    const sdkSpec = `file:${
       normalize(relative(AppPath, sdkPath)).replaceAll("\\", "/")
-    }/npm`;
+    }/${sdkTarget}`;
+
+    (updatedPackageJSON.dependencies ??= {})["thunder-sdk"] = sdkSpec;
 
     await writeJSONFile(packageJSONPath, updatedPackageJSON);
 
+    // Installing the SDK explicitly re-reads it; a plain `npm install` keeps a stale copy
+    // when the SDK was regenerated under the same version
     await sh([
       "npm",
       "install",
+      `thunder-sdk@${sdkSpec}`,
     ], { cwd: AppPath });
 
-    await sh([
-      "npm",
-      "run",
-      "build",
-    ], { cwd: AppPath });
+    if (!Options.native) {
+      await sh([
+        "npm",
+        "run",
+        "build",
+      ], { cwd: AppPath });
+    }
   } else throw new Error("We were unable to sync app!");
 };
 
 if (import.meta.main) {
-  const { template, t, forceSync } = parse(Deno.args);
+  const { native, template, t, forceSync } = parse(Deno.args);
 
   await generateApp({
+    native,
     template: template ?? t,
     forceSync,
     prompt: true,

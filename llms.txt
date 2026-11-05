@@ -1589,8 +1589,8 @@ public/www/sdk@0.0.1/
 ├── index.ts         # ThunderSDK class wiring modules + SDK plugins
 ├── plugins/         # Copied from ./sdk-plugins
 ├── deno.json        # Deno/JSR entry (deps: axios, path-to-regexp)
-├── npm/             # npm build (ESM + CommonJS + .d.ts) made by dnt — what generate:app links to
-└── package.tgz      # `npm pack` of npm/ — the distributable for other projects
+├── npm/             # npm build (ESM + CommonJS + .d.ts) made by dnt — what generate:app links to (web)
+└── package.tgz      # `npm pack` of npm/ — the distributable; generate:app --native installs this
 ```
 
 Regeneration is incremental: only files whose content changed are rewritten,
@@ -1718,7 +1718,8 @@ deno task check            # Format and lint
 deno task update:core      # Update the framework core (latest features + security patches; overwrites core/)
 deno task generate:openapi # Generate OpenAPI spec
 deno task generate:sdk     # Generate TypeScript SDK
-deno task generate:app     # Generate a dashboard app in public folder (based on the boilerplate repo: github.com/Huruf-Tech/thunder-ui)
+deno task generate:app     # Generate a dashboard app in public/app (boilerplate: github.com/Huruf-Tech/thunder-ui)
+deno task generate:app --native  # Generate a React Native (Expo) app in native-app/ (boilerplate: github.com/Huruf-Tech/thunder-native)
 
 # Plugin management
 deno task add:plugin    -n org/plugin-name [--setup[=env,...]] [--timeout=s]  # Install (optionally run setup)
