@@ -344,7 +344,13 @@ export const createCRUD = <
         }),
         handler: async (req: Request) => {
           const params = $params.parse(paramsAsJson(req));
-          const body = $body.parse(await bodyAsJson(req));
+          const raw = (await bodyAsJson(req)) as Record<string, unknown>;
+
+          // Only what was sent: zod 4's .partial() still fills in defaults, which would reset fields.
+          const body = Object.fromEntries(
+            Object.entries($body.parse(raw) as Record<string, unknown>)
+              .filter(([key]) => raw && typeof raw === "object" && key in raw),
+          );
 
           const _id = new ObjectId(params.id);
 
