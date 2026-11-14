@@ -12,7 +12,7 @@ import {
 } from "mongodb";
 import { parseDate } from "chrono-node";
 import { Response } from "@/core/http/response.ts";
-import { mongodb } from "@/database.ts";
+import { isDuplicateKeyError, mongodb } from "@/database.ts";
 import { deepObjectToFlatten } from "@/core/utils/objectUtils.ts";
 
 export type TCrudDetails<
@@ -66,6 +66,10 @@ export type TCrudOptions<
   };
   projection?: TCrudProjection<D> | Array<TCrudProjection<D>>;
   isolationFields?: TCrudIsolation<D>;
+  /** Answer a unique-index clash on create or update with this 400 instead of a 500. */
+  duplicateMessage?: string;
+  /** Run writes with hooks inside a transaction (default true). Turn off when hooks only notify. */
+  transaction?: boolean;
   hooks?: {
     beforeCreate?: (opts: {
       data: z.output<I> & { _id?: ObjectId };
@@ -133,6 +137,26 @@ const emptyArray: any[] = [];
 const $idString = z.string().refine((id) => ObjectId.isValid(id), {
   message: "Invalid id",
 });
+
+/** A unique-index clash becomes a 400 with a message for people; anything else is rethrown. */
+const refuseDuplicate = (message?: string) => (error: unknown): never => {
+  if (isDuplicateKeyError(error)) {
+    throw Response.badRequest(
+      message ?? "Something with these details already exists.",
+    );
+  }
+
+  throw error;
+};
+
+/** Runs a write, in a transaction when it has hooks (unless `transaction: false`). */
+const runWrite = <R>(
+  inTransaction: boolean,
+  exec: (session?: ClientSession) => Promise<R>,
+): Promise<R> =>
+  inTransaction
+    ? mongodb.withSession((_) => _.withTransaction(exec)) as Promise<R>
+    : exec();
 
 export const paginatedAggregation = (
   query: z.infer<typeof paginationSchema>,
@@ -228,10 +252,11 @@ export const createCRUD = <
             return { insertedId };
           };
 
-          const { insertedId } =
-            (opts?.hooks?.beforeCreate || opts?.hooks?.afterCreate)
-              ? await mongodb.withSession((_) => _.withTransaction(exec))
-              : await exec();
+          const { insertedId } = await runWrite(
+            !!(opts?.hooks?.beforeCreate || opts?.hooks?.afterCreate) &&
+              opts?.transaction !== false,
+            exec,
+          ).catch(refuseDuplicate(opts?.duplicateMessage));
 
           return Response.json({
             _id: insertedId.toString(),
@@ -381,21 +406,24 @@ export const createCRUD = <
               },
             );
 
-            if (opts?.hooks?.afterUpdate) {
-              await opts.hooks.afterUpdate({
-                _id,
-                results,
-                data: $set,
-                session,
-              }, req);
-            } else if (!results.matchedCount) {
+            // Not found (or outside the isolation) is a 404 whether or not there's a hook.
+            if (!results.matchedCount) {
               throw Response.notFound("No record updated!");
             }
+
+            await opts?.hooks?.afterUpdate?.({
+              _id,
+              results,
+              data: $set,
+              session,
+            }, req);
           };
 
-          (opts?.hooks?.beforeUpdate || opts?.hooks?.afterUpdate)
-            ? await mongodb.withSession((_) => _.withTransaction(exec))
-            : await exec();
+          await runWrite(
+            !!(opts?.hooks?.beforeUpdate || opts?.hooks?.afterUpdate) &&
+              opts?.transaction !== false,
+            exec,
+          ).catch(refuseDuplicate(opts?.duplicateMessage));
 
           return Response.ok();
         },
@@ -422,20 +450,23 @@ export const createCRUD = <
               ...(await opts?.isolationFields?.(req, "del")),
             } as any, { session });
 
-            if (opts?.hooks?.afterDel) {
-              await opts.hooks.afterDel({
-                _id,
-                results,
-                session,
-              }, req);
-            } else if (!results.deletedCount) {
+            // Not found (or outside the isolation) is a 404 whether or not there's a hook.
+            if (!results.deletedCount) {
               throw Response.notFound("No record deleted!");
             }
+
+            await opts?.hooks?.afterDel?.({
+              _id,
+              results,
+              session,
+            }, req);
           };
 
-          (opts?.hooks?.beforeDel || opts?.hooks?.afterDel)
-            ? await mongodb.withSession((_) => _.withTransaction(exec))
-            : await exec();
+          await runWrite(
+            !!(opts?.hooks?.beforeDel || opts?.hooks?.afterDel) &&
+              opts?.transaction !== false,
+            exec,
+          );
 
           return Response.ok();
         },
