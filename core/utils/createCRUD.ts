@@ -70,6 +70,12 @@ export type TCrudOptions<
   duplicateMessage?: string;
   /** Run writes with hooks inside a transaction (default true). Turn off when hooks only notify. */
   transaction?: boolean;
+  /**
+   * What clients may filter, sort and facet on, and how much they may read at once. Each is opt-in:
+   * left out, anything goes (as before). Set them on public routes so filters can't probe private
+   * fields or run costly patterns. See `TListRules`.
+   */
+  list?: TListRules;
   hooks?: {
     beforeCreate?: (opts: {
       data: z.output<I> & { _id?: ObjectId };
@@ -157,6 +163,258 @@ const runWrite = <R>(
   inTransaction
     ? mongodb.withSession((_) => _.withTransaction(exec)) as Promise<R>
     : exec();
+
+export type TFilterOperator =
+  | "$exists"
+  | "$eq"
+  | "$ne"
+  | "$gt"
+  | "$gte"
+  | "$lt"
+  | "$lte"
+  | "$mod"
+  | "$regex"
+  | "$in"
+  | "$nin"
+  | "$all"
+  | "$elemMatch";
+
+/** A facet a list can count: each value with how many match, or the lowest and highest value. */
+export type TFacetRule = {
+  type: "values" | "range";
+  /** The field it reads (dot path), e.g. "vendor", "price", "variants.options". */
+  path: string;
+  /** Array fields to unwind first, outermost first (e.g. ["variants", "variants.options"]). */
+  unwind?: string[];
+  /**
+   * Top-level filter fields left out when counting this facet, so choosing a value still shows the
+   * others' counts (multi-select). Defaults to the facet's own path.
+   */
+  exclude?: string[];
+  /** Most values returned (default 100). */
+  limit?: number;
+};
+
+export type TListRules = {
+  /**
+   * Fields clients may filter on and the operators allowed on each. Fields inside $elemMatch are
+   * named in full ("variants.available"). Left out: any field and operator.
+   */
+  filterable?: Record<string, readonly TFilterOperator[]>;
+  /** Fields clients may sort on (`_id` always; `_score` with text search). Left out: any. */
+  sortable?: readonly string[];
+  /** Facets clients may ask for, by name. */
+  facetable?: Record<string, TFacetRule>;
+  /** The most results one request may read (the default limit becomes this). */
+  maxLimit?: number;
+  /** Allow `search` (MongoDB $text: the collection needs a text index). */
+  textSearch?: boolean;
+};
+
+/** Refuses filters on fields or with operators the rules don't allow (a 400 naming the first). */
+export const assertFilterable = (
+  filters: z.output<typeof filtersSchema> | undefined,
+  rules: TListRules | undefined,
+  prefix = "",
+) => {
+  if (!filters || !rules?.filterable) return;
+  const allowed = rules.filterable;
+  for (const [key, expr] of Object.entries(filters)) {
+    if (key === "$and" || key === "$or") {
+      for (const part of expr as z.output<typeof filtersSchema>[]) {
+        assertFilterable(part, rules, prefix);
+      }
+      continue;
+    }
+    const field = prefix + key;
+    const ops = allowed[field];
+    if (!ops) {
+      throw Response.badRequest(`Filtering on "${field}" isn't allowed.`);
+    }
+    const check = (expression: Record<string, unknown>) => {
+      for (const [operator, value] of Object.entries(expression)) {
+        if (operator === "$not") {
+          check(value as Record<string, unknown>);
+          continue;
+        }
+        if (!ops.includes(operator as TFilterOperator)) {
+          throw Response.badRequest(
+            `The ${operator} filter isn't allowed on "${field}".`,
+          );
+        }
+        if (operator === "$elemMatch") {
+          assertFilterable(
+            value as z.output<typeof filtersSchema>,
+            rules,
+            `${field}.`,
+          );
+        }
+      }
+    };
+    check(expr as Record<string, unknown>);
+  }
+};
+
+/** Refuses sorting on fields the rules don't allow. */
+export const assertSortable = (
+  sort: Record<string, number> | undefined,
+  rules: TListRules | undefined,
+) => {
+  if (!sort) return;
+  for (const key of Object.keys(sort)) {
+    // `_score` is relevance only where text search is on; elsewhere it's a field, as before.
+    if (key === "_id" || (key === "_score" && rules?.textSearch)) continue;
+    if (!rules?.sortable) continue;
+    if (!rules.sortable.includes(key)) {
+      throw Response.badRequest(`Sorting by "${key}" isn't allowed.`);
+    }
+  }
+};
+
+/** A sort stage; while searching, `_score` is relevance. */
+const sortStage = (sort: Record<string, number>, searching: boolean) => ({
+  $sort: Object.fromEntries(
+    Object.entries(sort).map((
+      [key, direction],
+    ) => [searching && key === "_score" ? "score" : key, direction]),
+  ),
+});
+
+/**
+ * `$text` for a search (in the first $match, as MongoDB requires). Routes without text search ignore
+ * `search`, as they did before it existed.
+ */
+export const textSearchMatch = (
+  query: { search?: string },
+  rules: TListRules | undefined,
+) =>
+  query.search && rules?.textSearch ? { $text: { $search: query.search } } : {};
+
+/** Whether a list query asks for facets the route offers (routes without facets ignore them). */
+export const wantsFacets = (
+  query: { facets?: string[] },
+  rules: TListRules | undefined,
+) => !!(query.facets?.length && rules?.facetable);
+
+/**
+ * The list's stages after the store's own $match: the client's filters, sort and page, plus (when
+ * asked) facets, in the same aggregation. Checks the query against the rules first. With facets it
+ * returns ONE row: `{ results, facets }`; read it with `readListRow`. Without, rows are the results,
+ * as before. (How many match in all is the separate count endpoint's job.)
+ */
+export const listPipeline = (
+  query: z.infer<typeof paginationSchema>,
+  rules?: TListRules,
+) => {
+  assertFilterable(query.filters, rules);
+  assertFilterable(query.subFilters, rules);
+  assertSortable(query.sort, rules);
+  const limit = rules?.maxLimit
+    ? Math.min(query.limit ?? rules.maxLimit, rules.maxLimit)
+    : query.limit;
+  const facets = wantsFacets(query, rules) ? query.facets! : [];
+  for (const name of facets) {
+    if (!rules?.facetable?.[name]) {
+      throw Response.badRequest(`There's no "${name}" facet here.`);
+    }
+  }
+  const searching = !!(query.search && rules?.textSearch);
+  // A search with no sort of its own is ordered by relevance.
+  const sort = searching && !query.sort
+    ? { score: { $meta: "textScore" } }
+    : null;
+  const scoring = searching
+    ? [{ $addFields: { score: { $meta: "textScore" } } }]
+    : emptyArray;
+  const matches = (filters?: z.output<typeof filtersSchema>) => [
+    ...(filters ? [{ $match: normalizeFilters(filters) }] : emptyArray),
+    ...(query.subFilters
+      ? [{ $match: normalizeFilters(query.subFilters) }]
+      : emptyArray),
+  ];
+  const page = [
+    ...scoring,
+    ...(sort
+      ? [{ $sort: sort }]
+      : query.sort
+      ? [sortStage(query.sort, searching)]
+      : emptyArray),
+    ...(query.offset ? [{ $skip: query.offset }] : emptyArray),
+    ...(limit ? [{ $limit: limit }] : emptyArray),
+    ...(query.project ? [{ $project: query.project }] : emptyArray),
+  ];
+  if (!facets.length) {
+    return [...matches(query.filters), ...page];
+  }
+
+  // A facet counts with every filter but its own (multi-select): top-level filter fields only.
+  const without = (exclude: string[]) => {
+    const filters = query.filters as Record<string, unknown> | undefined;
+    if (!filters || "$and" in filters || "$or" in filters) return query.filters;
+    return Object.fromEntries(
+      Object.entries(filters).filter(([key]) => !exclude.includes(key)),
+    ) as z.output<typeof filtersSchema>;
+  };
+  const facetStages = Object.fromEntries(facets.map((name) => {
+    const rule = rules!.facetable![name];
+    const field = `$${rule.path}`;
+    const unwind = (rule.unwind ?? []).map((path) => ({ $unwind: `$${path}` }));
+    return [
+      `facet:${name}`,
+      [
+        ...matches(without(rule.exclude ?? [rule.path])),
+        ...(rule.type === "range"
+          ? [{
+            $group: { _id: null, min: { $min: field }, max: { $max: field } },
+          }]
+          : [
+            ...unwind,
+            // Each document counts once per value, however many of its elements have it.
+            { $group: { _id: { value: field, doc: "$_id" } } },
+            { $group: { _id: "$_id.value", count: { $sum: 1 } } },
+            { $match: { _id: { $ne: null } } },
+            { $sort: { count: -1, _id: 1 } },
+            { $limit: rule.limit ?? 100 },
+          ]),
+      ],
+    ];
+  }));
+  return [
+    {
+      $facet: {
+        results: [...matches(query.filters), ...page],
+        ...facetStages,
+      },
+    },
+  ];
+};
+
+export type TListFacets = Record<
+  string,
+  { value: unknown; count: number }[] | { min: unknown; max: unknown }
+>;
+
+/** The one row a list pipeline with facets returns, as `{ results, facets }`. */
+export const readListRow = <R>(
+  row: Record<string, any> | undefined,
+  query: z.infer<typeof paginationSchema>,
+  rules?: TListRules,
+): { results: R[]; facets?: TListFacets } => ({
+  results: (row?.results ?? []) as R[],
+  ...(wantsFacets(query, rules)
+    ? {
+      facets: Object.fromEntries(query.facets!.map((name) => {
+        const rows = (row?.[`facet:${name}`] ?? []) as any[];
+        return [
+          name,
+          rules?.facetable?.[name]?.type === "range"
+            ? { min: rows[0]?.min ?? null, max: rows[0]?.max ?? null }
+            : rows.map((item) => ({ value: item._id, count: item.count })),
+        ];
+      })),
+    }
+    : {}),
+});
 
 export const paginatedAggregation = (
   query: z.infer<typeof paginationSchema>,
@@ -271,6 +529,7 @@ export const createCRUD = <
       const $query = paginationSchema.pick({
         filters: true,
         subFilters: true,
+        search: true,
       });
       const $return = z.object({
         count: z.number(),
@@ -283,13 +542,17 @@ export const createCRUD = <
         }),
         handler: async (req: Request) => {
           const query = $query.parse(queryAsJson(req));
+          assertFilterable(query.filters, opts?.list);
+          assertFilterable(query.subFilters, opts?.list);
 
           // Same stages as GET: client filters run after the projection, so they
           // can't probe hidden fields (e.g. a regex oracle on a projected-out password)
           const [result] = await details.model.aggregate<{ count: number }>([
             {
-              $match:
-                (await opts?.isolationFields?.(req, "count") ?? {}) as any,
+              $match: {
+                ...(await opts?.isolationFields?.(req, "count") ?? {}),
+                ...textSearchMatch(query, opts?.list),
+              } as any,
             },
             ...projectionStages,
             ...(query.filters
@@ -319,6 +582,13 @@ export const createCRUD = <
         results: z.array(details.schema.extend({
           _id: z.string(),
         })),
+        facets: z.record(
+          z.string(),
+          z.union([
+            z.array(z.object({ value: z.unknown(), count: z.number() })),
+            z.object({ min: z.unknown(), max: z.unknown() }),
+          ]),
+        ).optional(),
       });
 
       return {
@@ -331,21 +601,23 @@ export const createCRUD = <
           const params = $params.parse(paramsAsJson(req));
           const query = $query.parse(queryAsJson(req));
 
-          const resultsQuery = details.model.aggregate([
+          const rows = await details.model.aggregate([
             {
               $match: {
                 ...(params.id ? { _id: new ObjectId(params.id) } : {}),
                 ...(await opts?.isolationFields?.(req, "get")),
+                ...textSearchMatch(query, opts?.list),
               } as any,
             },
             ...projectionStages,
-            ...paginatedAggregation(query),
-          ]);
+            ...listPipeline(query, opts?.list),
+          ]).toArray();
 
+          // With facets, the list is one row; otherwise the rows are the results.
           return Response.json(
-            {
-              results: await resultsQuery.toArray(),
-            },
+            wantsFacets(query, opts?.list)
+              ? readListRow(rows[0], query, opts?.list)
+              : { results: rows },
           );
         },
       };
@@ -511,6 +783,10 @@ export const expressionSchema = z.object({
   $in: z.array(clientValueSchema),
   $nin: z.array(clientValueSchema),
   $all: z.array(clientValueSchema),
+  /** Matches when one element of an array satisfies every condition (e.g. the same variant). */
+  $elemMatch: z.lazy((): z.ZodType<Record<string, unknown>> =>
+    basicFilterSchema
+  ),
 }).partial().meta({ tsLabel: "TFilterExpression" });
 
 export const $expression = expressionSchema;
@@ -568,6 +844,15 @@ export const paginationSchema = z.object(
       .describe(
         "Provide a projection information in mongodb project object format",
       ),
+    facets: z.preprocess(
+      (value) => typeof value === "string" ? value.split(",") : value,
+      z.array(z.string().max(100)).max(20),
+    ).optional().describe(
+      "Facets to count alongside the results (names the route declares facetable)",
+    ),
+    search: z.string().trim().max(200).optional().describe(
+      "Text search (routes with text search on); sort by `_score` for relevance",
+    ),
   },
 ).meta({ tsLabel: "TPagination" });
 
@@ -640,8 +925,11 @@ export const normalizeFilterExpression = (
 
 export const normalizeFilters = (
   filters?: z.output<typeof filtersSchema>,
-) => {
+  depth = 0,
+): Record<string, any> => {
   if (typeof filters !== "object" || !filters) return {};
+  // $and, $or and $elemMatch nest; a bound keeps a crafted filter from exhausting the stack.
+  if (depth > 8) throw Response.badRequest("Filters are nested too deeply.");
 
   const transform = (
     expr:
@@ -651,15 +939,20 @@ export const normalizeFilters = (
     const newExpr: Record<string, any> = {};
 
     for (const [key, value] of Object.entries(expr)) {
-      if (key === "$not") newExpr[key] = transform(value);
-      else {
+      if (key === "$not") newExpr[key] = transform(value as any);
+      else if (key === "$elemMatch") {
+        newExpr[key] = normalizeFilters(
+          value as z.output<typeof filtersSchema>,
+          depth + 1,
+        );
+      } else {
         if (key === "$regex" && typeof value === "string") {
           assertPatternLength(value);
         }
 
         newExpr[key] = value instanceof Array
           ? value.map(normalizeFilterExpression)
-          : normalizeFilterExpression(value);
+          : normalizeFilterExpression(value as any);
       }
     }
 
@@ -670,7 +963,10 @@ export const normalizeFilters = (
 
   for (const [key, expr] of Object.entries(filters)) {
     if (["$and", "$or"].includes(key)) {
-      newFilters[key] = expr.map(normalizeFilters);
+      // An explicit callback: map's index must not become the depth.
+      newFilters[key] = (expr as z.output<typeof filtersSchema>[]).map((
+        part,
+      ) => normalizeFilters(part, depth + 1));
       continue;
     }
 
@@ -702,7 +998,16 @@ export const testFilters = <T extends Record<string, unknown>>(
       const value = data[key];
 
       try {
-        if (Array.isArray(expression) && operator !== "$mod") {
+        if (operator === "$elemMatch") {
+          const items = Array.isArray(value) ? value : [];
+          success = items.some((item) =>
+            typeof item === "object" && item !== null &&
+            testFilters(
+              expression as z.output<typeof filtersSchema>,
+              item as Record<string, unknown>,
+            )
+          );
+        } else if (Array.isArray(expression) && operator !== "$mod") {
           const targets = expression.map(normalizeFilterExpression).map(String);
 
           // Arrays survive flattening intact, so compare element by element.
@@ -730,7 +1035,7 @@ export const testFilters = <T extends Record<string, unknown>>(
         } else {
           const target = Array.isArray(expression)
             ? expression // $mod: [divisor, remainder]
-            : normalizeFilterExpression(expression);
+            : normalizeFilterExpression(expression as any);
 
           switch (operator) {
             case "$exists":

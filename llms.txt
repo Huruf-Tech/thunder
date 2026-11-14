@@ -611,6 +611,21 @@ export default new Router("/api/users", function users(router) {
       }
     },
 
+    // Optional: answer a unique-index clash on create/update with this 400 (instead of a 500).
+    duplicateMessage: "Another user already has this email.",
+
+    // Optional: writes with hooks run in a transaction (default true). Set false when hooks only
+    // notify (cache refresh, events) and nothing needs rolling back.
+    transaction: false,
+
+    // Optional: what clients may filter, sort and facet on (see "Public list rules"). Opt-in:
+    // left out, any field and operator is allowed, as before. Set it on every PUBLIC list.
+    list: {
+      filterable: { name: ["$eq", "$regex"], role: ["$in"] },
+      sortable: ["name", "createdAt"],
+      maxLimit: 100,
+    },
+
     // Optional: lifecycle hooks. Every hook also receives `session` (see Gotchas).
     hooks: {
       // Returning a value replaces the data that gets inserted
@@ -649,18 +664,21 @@ generation.
 
 ### Querying GET and /count
 
-`GET` accepts the full pagination query below; `/count` accepts only `filters`
-and `subFilters`. Query strings are parsed with `qs`, so send nested values in
-bracket notation (`?filters[name][$eq]=john&limit=50`).
+`GET` accepts the full pagination query below; `/count` accepts only `filters`,
+`subFilters` and `search` (it's the way to get a total: `GET` never returns one).
+Query strings are parsed with `qs`, so send nested values in bracket notation
+(`?filters[name][$eq]=john&limit=50`).
 
 | Param | Default | Notes |
 | --- | --- | --- |
 | `filters` | — | Client-side filter object (see below) |
 | `subFilters` | — | A second, independently applied filter layer |
 | `offset` | `0` | `$skip` |
-| `limit` | `2000` | `$limit`, min `1`, **max `2000`** |
-| `sort` | `{ _id: -1 }` | Mongodb sort object, values `-1`..`1` |
+| `limit` | `2000` | `$limit`, min `1`, **max `2000`** (or the route's `list.maxLimit`, which also becomes the default) |
+| `sort` | `{ _id: -1 }` | Mongodb sort object, values `-1`..`1`; `_score` sorts by search relevance on routes with text search |
 | `project` | — | Mongodb projection object; a value may also be `{ $slice: n }` or `{ $slice: [n, n] }` |
+| `facets` | — | Facet names to count alongside the results (`facets[]=vendor&facets[]=price` or `facets=vendor,price`); only routes with `list.facetable`, ignored elsewhere |
+| `search` | — | Text search (max 200 chars); only routes with `list.textSearch`, ignored elsewhere. With no `sort`, results come by relevance |
 
 A filter value is either a plain string or a tagged object, which is how a
 client sends typed values over a query string:
@@ -685,23 +703,103 @@ client sends typed values over a query string:
 - Value types: `string`, `number`, `boolean`, `objectId`, `date`, `regex`, `null`.
 - Operators: `$exists`, `$eq`, `$ne`, `$gt`, `$gte`, `$lt`, `$lte`, `$regex`,
   `$in`, `$nin`, `$all`, `$mod` (a raw `[divisor, remainder]` tuple, not a
-  tagged value), and `$not` wrapping any expression.
+  tagged value), `$elemMatch` (below), and `$not` wrapping any expression.
+- `$elemMatch` takes a filter object and holds when **one element** of an array
+  meets all of it. Use it when conditions must hold on the same element: "red
+  **and** size M **and** in stock" on one variant, not one red variant and
+  another medium one:
+
+  ```jsonc
+  { "variants": { "$elemMatch": {
+      "options":   { "$all": ["Red", "M"] },
+      "available": { "$eq": { "type": "boolean", "value": "true" } }
+  } } }
+  ```
 - Combine with `{ "$and": [...] }` / `{ "$or": [...] }` of filter objects.
 - A `$regex` pattern longer than 200 characters is rejected with a `400` — the
   pattern comes from the client and is run by mongod too.
+- Filters nest at most 8 levels deep (`$and` / `$or` / `$elemMatch`); deeper is a `400`.
+- Client filters run **after** the route's `projection`, so they can't probe
+  fields the route hides.
+
+### Public list rules (`list`)
+
+Without `list`, a client may filter, sort and read on any field the projection
+leaves visible, which is fine behind permissions (the dashboard) but not on a
+public endpoint (a store's products): filters on `cost` or stock would leak
+them through the results, and `$regex` can be made slow. Set `list` on every
+public list. Everything in it is opt-in, and a route without it behaves exactly
+as before.
+
+```ts
+createCRUD({ router, schema: $product, model: productModel }, {
+  projection: { cost: 0 },
+  list: {
+    // Field → allowed operators. Fields inside $elemMatch are named in full.
+    // Anything else is a 400 that names the field (also inside $and/$or/$not).
+    filterable: {
+      vendor: ["$in"],
+      price: ["$gte", "$lte"],
+      tags: ["$in", "$all"],
+      variants: ["$elemMatch"],
+      "variants.options": ["$all"],
+      "variants.available": ["$eq"],
+    },
+    sortable: ["price", "title", "createdAt"],  // `_id` is always allowed
+    maxLimit: 48,                              // caps `limit`, and is the default
+    textSearch: true,                          // enables `search`; needs a text index
+    facetable: {
+      vendor: { type: "values", path: "vendor" },
+      price: { type: "range", path: "price" },
+      option: {
+        type: "values",
+        path: "variants.options",
+        unwind: ["variants", "variants.options"],  // arrays to unwind, outermost first
+        exclude: ["variants"],                     // filter fields this facet ignores
+        limit: 50,                                 // most values returned (default 100)
+      },
+    },
+  },
+});
+```
+
+With `facets` in the query (and offered by the route), `GET` returns one object
+instead of the plain list:
+
+```jsonc
+{
+  "results": [ /* the page, as usual */ ],
+  "facets": {
+    "vendor": [{ "value": "Acme", "count": 12 }, { "value": "Lumen", "count": 4 }],
+    "price":  { "min": 1500, "max": 9900 }
+  }
+}
+```
+
+- **Multi-select:** each facet counts with every filter **except its own**
+  (its `path`, or the fields in `exclude`), so picking "Acme" still shows how
+  many "Lumen" has. This works for top-level filter fields; with `$and`/`$or`
+  at the top, facets use the full filters.
+- **A value counts each document once**, however many of its array elements have it.
+- Results and facets come from **one** aggregation (`$facet`), after the
+  route's isolation `$match` and projection.
+- Unknown facet names are a `400` on routes that offer facets.
+- `search` uses MongoDB `$text`, so the collection needs a text index
+  (`createIndex({ title: "text", description: "text" })`).
 
 ### Gotchas
 
-- **Registering a hook turns the operation into a transaction.** If any hook
-  exists for create / update / delete, that operation runs inside
-  `mongodb.withSession(_ => _.withTransaction(...))`, which requires a replica
-  set. With no hooks it stays a plain single operation.
+- **Registering a hook turns the operation into a transaction** (unless
+  `transaction: false`). If any hook exists for create / update / delete, that
+  operation runs inside `mongodb.withSession(_ => _.withTransaction(...))`,
+  which requires a replica set. With no hooks it stays a plain single operation.
 - **`updatedAt` is always written on `PATCH`**, whether or not your schema
   declares it.
-- **A zero-match `PATCH`/`DELETE` throws** (`No record updated!` /
-  `No record deleted!`) — **but only while no `afterUpdate`/`afterDel` hook is
-  registered.** Register one and a no-op write silently returns `200`, so check
-  `results.modifiedCount` / `results.deletedCount` inside the hook yourself.
+- **`PATCH` sets only the keys the request sent.** Defaults in the update schema
+  don't reset other fields; a sent sub-object replaces the stored one whole.
+- **A zero-match `PATCH`/`DELETE` is a `404`** (`No record updated!` /
+  `No record deleted!`), hooks or not; that includes a record outside the
+  caller's `isolationFields`.
 - `GET /:id` is the list route with an optional param, so it returns an array
   and the pagination query still applies to it.
 
@@ -712,11 +810,34 @@ reused outside a CRUD endpoint:
 
 - `normalizeFilters(filters)` / `normalizeFilterExpression(value)` — convert a
   client filter into a mongodb filter (resolving `objectId`, `date`, `nldate:`,
-  `regex`, …).
+  `regex`, `$elemMatch`, …).
 - `testFilters(filters, data)` — evaluate a client filter against a plain object
-  in memory, with no database round trip (useful for access rules and policies).
+  in memory, with no database round trip (useful for access rules and policies);
+  `$elemMatch` included.
 - `paginatedAggregation(query)` — the `$match` / `$sort` / `$skip` / `$limit` /
   `$project` stages for a parsed pagination query, for hand-rolled aggregations.
+- `listPipeline(query, rules?)` — the same stages with `list` rules applied
+  (checks, `maxLimit`, relevance sort) and, when facets are asked for, the one
+  `$facet` stage; read its single row with `readListRow(row, query, rules)` →
+  `{ results, facets }`. Put `textSearchMatch(query, rules)` in your first
+  `$match` (MongoDB requires `$text` there), and use `wantsFacets(query, rules)`
+  to know which shape you'll get. Without rules it equals `paginatedAggregation`.
+  Use these for public lists outside `createCRUD` (a storefront's catalog):
+
+  ```ts
+  const query = $pagination.parse(queryAsJson(req));
+  const rows = await productModel.aggregate([
+    { $match: { tenant, status: "active", ...textSearchMatch(query, RULES) } },
+    { $project: PUBLIC_FIELDS },            // before the client's filters, as createCRUD does
+    ...listPipeline(query, RULES),
+  ]).toArray();
+  return Response.json(
+    wantsFacets(query, RULES) ? readListRow(rows[0], query, RULES) : { results: rows },
+  );
+  ```
+- `assertFilterable(filters, rules)` / `assertSortable(sort, rules)` — the
+  `list` checks on their own (a `400` naming what isn't allowed).
+- Types: `TListRules`, `TFacetRule`, `TFilterOperator`, `TListFacets`.
 - Schemas: `$pagination`, `$filter`, `$basicFilter`, `$multiFilter`,
   `$expression`, `$clientValue` (each also exported as `…Schema`).
 
@@ -1012,6 +1133,9 @@ Built-ins that already exist (do NOT re-implement these):
 - **Client-side filters** → `normalizeFilters` / `testFilters` / `paginatedAggregation`
   and the `$pagination` / `$filter` schema family, also from
   `@/core/utils/createCRUD.ts` (don't invent a second filter format).
+- **Public lists (filters, sorting, facets, search)** → createCRUD's `list` option,
+  or `listPipeline` / `readListRow` with `TListRules` for hand-rolled ones. Never
+  expose an unrestricted list publicly.
 - **Request parsing & auth** → `paramsAsJson`, `bodyAsJson`, `parseBasicAuth`, `serveAssets` from `@/core/http/utils.ts`.
 - **Responses** → `Response` helpers from `@/core/http/response.ts`.
 - **Validation** → `zod` (already a dependency).
