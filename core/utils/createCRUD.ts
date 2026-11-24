@@ -1037,45 +1037,41 @@ export const testFilters = <T extends Record<string, unknown>>(
             ? expression // $mod: [divisor, remainder]
             : normalizeFilterExpression(expression as any);
 
-          switch (operator) {
-            case "$exists":
-              success = exists === Boolean(target);
-              break;
-            case "$eq":
-              success = String(value) === String(target);
-              break;
-            case "$ne":
-              success = String(value) !== String(target);
-              break;
-            case "$gt":
-              // @ts-ignore
-              success = value > target;
-              break;
-            case "$gte":
-              // @ts-ignore
-              success = value >= target;
-              break;
-            case "$lt":
-              // @ts-ignore
-              success = value < target;
-              break;
-            case "$lte":
-              // @ts-ignore
-              success = value <= target;
-              break;
-            case "$mod":
-              // @ts-ignore
-              success = Number(value) % Number(target[0]) === Number(target[1]);
-              break;
-            case "$regex":
-              // @ts-ignore
-              success = RegExp(target).test(value);
-              break;
+          // As in MongoDB, an array field matches when one of its elements does ($ne: when none
+          // equals). Comparing the whole array as a string ("a,b") matched nothing.
+          const items: unknown[] = Array.isArray(value) ? value : [value];
+          const test = (item: any) => {
+            switch (operator) {
+              case "$eq":
+                return String(item) === String(target);
+              case "$gt":
+                // @ts-ignore
+                return item > target;
+              case "$gte":
+                // @ts-ignore
+                return item >= target;
+              case "$lt":
+                // @ts-ignore
+                return item < target;
+              case "$lte":
+                // @ts-ignore
+                return item <= target;
+              case "$mod":
+                // @ts-ignore
+                return Number(item) % Number(target[0]) === Number(target[1]);
+              case "$regex":
+                // @ts-ignore
+                return RegExp(target).test(item);
+              default:
+                return false;
+            }
+          };
 
-            default:
-              success = false;
-              break;
-          }
+          success = operator === "$exists"
+            ? exists === Boolean(target)
+            : operator === "$ne"
+            ? !items.some((item) => String(item) === String(target))
+            : items.some(test);
         }
       } catch {
         success = false;
